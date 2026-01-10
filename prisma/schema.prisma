@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model FailedCertificate {
+  id        String   @id @default(cuid())
+  batchId   String
+  data      Json
+  error     String
+  createdAt DateTime @default(now())
+  batch     Batch    @relation(fields: [batchId], references: [id])
+}
+
+model Batch {
+  id           String        @id @default(cuid())
+  name         String
+  creatorId    String
+  progress         Int     @default(0)
+  failedCertificates FailedCertificate[]
+  creator      User          @relation(fields: [creatorId], references: [id])
+  certificates Certificate[]
+  invalidEmails InvalidEmail[]
+  createdAt    DateTime      @default(now())
+}
+
+model TokenTransaction {
+  id        String   @id @default(cuid())
+  userId    String
+  amount    Int
+  type      String   
+  reason    String   
+  email     String   
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model User {
+  id               String        @id @default(cuid())
+  name             String
+  email            String        @unique
+  password         String?
+  organization     String?
+  phone            String?
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  templates        Template[]
+  certificates     Certificate[]
+  batches          Batch[]
+  transactions     TokenTransaction[]
+  emailConfig      EmailConfig?
+  tokens           Int           @default(100)
+  is_admin         Boolean       @default(false)
+  is_api_enabled   Boolean       @default(false) 
+  apiKeys          ApiKey[]  
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+model Template {
+  id           String        @id @default(cuid())
+  name         String
+  imageUrl     String
+  width        Int
+  height       Int
+  placeholders Json
+  signatures   Json
+  qrPlaceholders Json?
+  creatorId    String
+  creator      User          @relation(fields: [creatorId], references: [id])
+  certificates Certificate[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model InvalidEmail {
+  id        String   @id @default(cuid())
+  email     String
+  batchId   String
+  batch     Batch    @relation(fields: [batchId], references: [id])
+  reason    String   
+  createdAt DateTime @default(now())
+}
+
+model Certificate {
+  id                String    @id @default(cuid())
+  templateId        String? // Made optional to allow null
+  template          Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  batchId           String?
+  batch             Batch?    @relation(fields: [batchId], references: [id])
+  uniqueIdentifier  String    @unique
+  data              Json
+  generatedImageUrl String
+  creatorId         String
+  creator           User      @relation(fields: [creatorId], references: [id])
+  createdAt         DateTime  @default(now())
+}
+
+model EmailConfig {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  defaultSubject String   @default("Your Certificate")
+  defaultMessage String   @default("Please find your certificate attached.")
+  logoUrl        String?  
+  emailHeading   String   @default("Congratulations on receiving your certificate!") 
+  supportEmail   String?  @default("support@example.com")
+  user           User     @relation(fields: [userId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  customDomain   String?
+  customEmail    String?
+  isVerified     Boolean  @default(false)
+  dkimRecords    Json?    
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  name        String
+  key         String    @unique
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  lastUsed    DateTime?
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime?
+  isActive    Boolean   @default(true)
+}
+
+model Bounce {
+  id        String   @id @default(cuid())
+  email     String
+  userId    String
+  batchId   String
+  createdAt DateTime @default(now())
+}
