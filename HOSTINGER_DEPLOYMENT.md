@@ -417,7 +417,7 @@ AWS_S3_BUCKET_NAME=generate-certificates
 NEXT_PUBLIC_AWS_REGION=ap-south-1
 
 # Application URL (update with your domain or IP)
-NEXT_PUBLIC_BASE_URL=https://yourdomain.com
+NEXT_PUBLIC_BASE_URL=https://app.sendcertificate.com
 
 # Redis (local)
 REDIS_URL=redis://localhost:6379

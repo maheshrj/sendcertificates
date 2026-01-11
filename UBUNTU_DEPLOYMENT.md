@@ -413,8 +413,8 @@ NEXT_PUBLIC_AWS_REGION=ap-south-1
 # APPLICATION URL
 # ==========================================
 # Update with your domain or server IP
-NEXT_PUBLIC_BASE_URL=http://YOUR_SERVER_IP
-# After SSL: https://yourdomain.com
+NEXT_PUBLIC_BASE_URL=https://app.sendcertificate.com
+# Use your actual domain (this is used for QR codes and email links)
 
 # ==========================================
 # REDIS CONFIGURATION
