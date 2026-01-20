@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/lib/db';
+import { Prisma } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { 
   SESv2Client, 
@@ -36,16 +37,20 @@ export async function GET(request: Request) {
   }
 
   // Basic analytics
-  const [totalBatches, totalCertificates, certificates] = await Promise.all([
+  // Basic analytics
+  const [totalBatches, totalCertificates, totalEmailsSent] = await Promise.all([
     prisma.batch.count({ where: { creatorId: userId } }),
     prisma.certificate.count({ where: { creatorId: userId } }),
-    prisma.certificate.findMany({ where: { creatorId: userId }, select: { data: true } })
+    prisma.certificate.count({
+      where: {
+        creatorId: userId,
+        data: {
+          path: ['Email'],
+          not: Prisma.JsonNull
+        }
+      }
+    })
   ]);
-
-  const totalEmailsSent = certificates.reduce((count: number, cert: { data: unknown }) => {
-    const email = (cert.data as Record<string, string>)?.Email;
-    return email ? count + 1 : count;
-  }, 0);
 
   const emailConfig = await prisma.emailConfig.findUnique({
     where: { userId }
