@@ -26,6 +26,9 @@ model Batch {
   certificates Certificate[]
   invalidEmails InvalidEmail[]
   createdAt    DateTime      @default(now())
+
+  @@index([creatorId])
+  @@index([creatorId, createdAt(sort: Desc)])
 }
 
 model TokenTransaction {
@@ -98,6 +101,10 @@ model Certificate {
   creatorId         String
   creator           User      @relation(fields: [creatorId], references: [id])
   createdAt         DateTime  @default(now())
+
+  @@index([batchId])
+  @@index([creatorId])
+
 }
 
 model EmailConfig {
