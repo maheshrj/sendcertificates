@@ -11,6 +11,7 @@ import jwt from 'jsonwebtoken';
 import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import path from 'path';
+import { checkUserRateLimit } from '@/app/lib/rate-limiter';
 
 // ----------------------------------------
 // Font Registration (if you need custom fonts)
@@ -87,6 +88,28 @@ const emailWorker = new Worker(
       batchId,
     } = job.data;
 
+    // Check user-specific rate limit
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { emailRateLimit: true, emailDailyLimit: true },
+    });
+
+    if (!user) {
+      throw new Error(`User ${userId} not found`);
+    }
+
+    const rateLimitCheck = await checkUserRateLimit(
+      userId,
+      user.emailRateLimit,
+      user.emailDailyLimit
+    );
+
+    if (!rateLimitCheck.allowed) {
+      // Delay the job and retry later
+      console.log(`Rate limit exceeded for user ${userId}: ${rateLimitCheck.reason}`);
+      throw new Error(`Rate limit exceeded: ${rateLimitCheck.reason}`);
+    }
+
     if (!isValidEmail(email)) {
       throw new Error(`Invalid email address: ${email}`);
     }
@@ -122,7 +145,7 @@ const emailWorker = new Worker(
       });
 
       await transporter.sendMail(mailOptions);
-      console.log(`Email sent to ${email}`);
+      console.log(`Email sent to ${email} for user ${userId}`);
     } catch (emailError) {
       console.error(`Failed to send email to ${email}:`, emailError);
       throw emailError; // triggers BullMQ retry
@@ -130,10 +153,7 @@ const emailWorker = new Worker(
   },
   {
     connection,
-    limiter: {
-      max: process.env.EMAIL_LIMIT ? parseInt(process.env.EMAIL_LIMIT) : 10,
-      duration: 1000, // 1 second
-    },
+    // Removed global rate limiter - now using per-user rate limiting
   }
 );
 
@@ -383,13 +403,12 @@ async function prepareEmailData(
   const htmlContent = `
     <div style="background-color: #f0f4f8; padding: 50px;">
       <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto; background: #fff; padding: 20px;">
-        ${
-          emailConfig?.logoUrl
-            ? `<div style="text-align: center; margin-bottom: 20px;">
+        ${emailConfig?.logoUrl
+      ? `<div style="text-align: center; margin-bottom: 20px;">
                  <img src="${emailConfig.logoUrl}" alt="Logo" height="50" />
                </div>`
-            : ''
-        }
+      : ''
+    }
         <h2 style="color: #333; text-align: center;">${emailHeading}</h2>
         <p style="color: #555;">${emailMessage}</p>
         <p style="text-align: center;">
