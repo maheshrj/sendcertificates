@@ -3,6 +3,7 @@ import prisma from '@/app/lib/db';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
+import { sendVerificationEmail } from '@/app/lib/mail';
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 
@@ -49,6 +50,7 @@ export async function GET(request: Request) {
                 organization: true,
                 phone: true,
                 tokens: true,
+                emailVerified: true,
                 is_admin: true,
                 createdAt: true,
                 updatedAt: true,
@@ -108,6 +110,10 @@ export async function POST(request: Request) {
         // Hash password
         const hashedPassword = await bcrypt.hash(generatedPassword, 10);
 
+        // Generate verification token
+        const verificationToken = crypto.randomBytes(32).toString('hex');
+        const verificationTokenExpiry = new Date(Date.now() + 86400000); // 24 hours
+
         // Create user with default EmailConfig
         const newUser = await prisma.user.create({
             data: {
@@ -118,6 +124,9 @@ export async function POST(request: Request) {
                 phone: phone || null,
                 tokens: 100, // Default tokens
                 is_admin: false,
+                emailVerified: false,
+                verificationToken,
+                verificationTokenExpiry,
                 emailConfig: {
                     create: {
                         defaultSubject: 'Your Certificate',
@@ -134,15 +143,20 @@ export async function POST(request: Request) {
                 organization: true,
                 phone: true,
                 tokens: true,
+                emailVerified: true,
                 is_admin: true,
                 createdAt: true,
             },
         });
 
+        // Send verification email to new user
+        await sendVerificationEmail(email, name, verificationToken);
+
         return NextResponse.json({
             success: true,
             user: newUser,
             generatedPassword, // Return plaintext password for admin to share
+            message: 'User created successfully. Verification email sent.',
         });
     } catch (error) {
         console.error('Error creating user:', error);

@@ -30,43 +30,57 @@ interface FileLike {
   type?: string;
 }
 
-if (!process.env.REDIS_URL) {
-  throw new Error('REDIS_URL is not defined in environment variables');
+
+let connection: IORedis | null = null;
+let emailQueue: Queue | null = null;
+let certificateQueue: Queue | null = null;
+let emailWorker: Worker | null = null;
+let certificateWorker: Worker | null = null;
+
+// Only initialize Redis if REDIS_URL is available
+if (process.env.REDIS_URL) {
+  try {
+    // ----------------------------------------
+    // Redis connection
+    // ----------------------------------------
+    connection = new IORedis(process.env.REDIS_URL, {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+      retryStrategy(times) {
+        const delay = Math.min(times * 50, 2000);
+        return delay;
+      },
+    });
+
+    connection.on('error', (error) => {
+      console.error('Redis connection error:', error);
+    });
+
+    connection.on('connect', () => {
+      console.log('Successfully connected to Redis');
+    });
+
+    // ----------------------------------------
+    // Email Queue & Worker
+    // ----------------------------------------
+    emailQueue = new Queue('emailQueue', {
+      connection,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 1000,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Failed to initialize Redis for generate-certificates:', error);
+    connection = null;
+    emailQueue = null;
+  }
+} else {
+  console.warn('REDIS_URL not configured - queues will be disabled for generate-certificates');
 }
-
-// ----------------------------------------
-// Redis connection
-// ----------------------------------------
-const connection = new IORedis(process.env.REDIS_URL, {
-  maxRetriesPerRequest: null,
-  enableReadyCheck: false,
-  retryStrategy(times) {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
-  },
-});
-
-connection.on('error', (error) => {
-  console.error('Redis connection error:', error);
-});
-
-connection.on('connect', () => {
-  console.log('Successfully connected to Redis');
-});
-
-// ----------------------------------------
-// Email Queue & Worker
-// ----------------------------------------
-const emailQueue = new Queue('emailQueue', {
-  connection,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 1000,
-    },
-  },
-});
 
 function isValidEmail(email: string): boolean {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

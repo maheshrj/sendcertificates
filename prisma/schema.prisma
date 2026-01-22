@@ -43,27 +43,30 @@ model TokenTransaction {
 }
 
 model User {
-  id               String        @id @default(cuid())
-  name             String
-  email            String        @unique
-  password         String?
-  organization     String?
-  phone            String?
-  resetToken       String?
-  resetTokenExpiry DateTime?
-  templates        Template[]
-  certificates     Certificate[]
-  batches          Batch[]
-  transactions     TokenTransaction[]
-  emailConfig      EmailConfig?
-  tokens           Int           @default(100)
-  is_admin         Boolean       @default(false)
-  is_api_enabled   Boolean       @default(false) 
-  apiKeys          ApiKey[]
-  emailRateLimit   Int           @default(10)
-  emailDailyLimit  Int           @default(10000)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id                      String        @id @default(cuid())
+  name                    String
+  email                   String        @unique
+  password                String?
+  organization            String?
+  phone                   String?
+  emailVerified           Boolean       @default(false)
+  verificationToken       String?
+  verificationTokenExpiry DateTime?
+  resetToken              String?
+  resetTokenExpiry        DateTime?
+  templates               Template[]
+  certificates            Certificate[]
+  batches                 Batch[]
+  transactions            TokenTransaction[]
+  emailConfig             EmailConfig?
+  tokens                  Int           @default(100)
+  is_admin                Boolean       @default(false)
+  is_api_enabled          Boolean       @default(false) 
+  apiKeys                 ApiKey[]
+  emailRateLimit          Int           @default(10)
+  emailDailyLimit         Int           @default(10000)
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
 }
 
 model Template {

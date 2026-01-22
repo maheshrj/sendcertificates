@@ -10,6 +10,7 @@ interface User {
     organization?: string;
     phone?: string;
     tokens: number;
+    emailVerified: boolean;
     is_admin: boolean;
     createdAt: string;
 }
@@ -130,6 +131,9 @@ export default function UserManagement() {
                                 Tokens
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Email Verified
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 Role
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -151,6 +155,17 @@ export default function UserManagement() {
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <div className="text-sm text-gray-900">{user.tokens}</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    {user.emailVerified ? (
+                                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                            Yes
+                                        </span>
+                                    ) : (
+                                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                            No
+                                        </span>
+                                    )}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     {user.is_admin ? (

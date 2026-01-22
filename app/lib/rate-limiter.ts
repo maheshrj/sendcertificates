@@ -1,25 +1,33 @@
 import IORedis from 'ioredis';
 
-if (!process.env.REDIS_URL) {
-    throw new Error('REDIS_URL is not defined in environment variables');
+let redis: IORedis | null = null;
+
+// Only initialize Redis if REDIS_URL is available
+if (process.env.REDIS_URL) {
+    try {
+        redis = new IORedis(process.env.REDIS_URL, {
+            maxRetriesPerRequest: null,
+            enableReadyCheck: false,
+            retryStrategy(times) {
+                const delay = Math.min(times * 50, 2000);
+                return delay;
+            },
+        });
+
+        redis.on('error', (error) => {
+            console.error('Redis connection error in rate-limiter:', error);
+        });
+
+        redis.on('connect', () => {
+            console.log('Rate limiter connected to Redis');
+        });
+    } catch (error) {
+        console.error('Failed to initialize Redis:', error);
+        redis = null;
+    }
+} else {
+    console.warn('REDIS_URL not configured - rate limiting will be disabled');
 }
-
-const redis = new IORedis(process.env.REDIS_URL, {
-    maxRetriesPerRequest: null,
-    enableReadyCheck: false,
-    retryStrategy(times) {
-        const delay = Math.min(times * 50, 2000);
-        return delay;
-    },
-});
-
-redis.on('error', (error) => {
-    console.error('Redis connection error in rate-limiter:', error);
-});
-
-redis.on('connect', () => {
-    console.log('Rate limiter connected to Redis');
-});
 
 /**
  * Check if a user can send an email based on their rate limits
@@ -33,6 +41,12 @@ export async function checkUserRateLimit(
     emailsPerSecond: number,
     emailsPerDay: number
 ): Promise<{ allowed: boolean; reason?: string }> {
+    // If Redis is not available, allow the email
+    if (!redis) {
+        console.warn('Redis not available - rate limiting disabled');
+        return { allowed: true };
+    }
+
     const now = Date.now();
     const currentSecond = Math.floor(now / 1000);
     const currentDay = new Date().toISOString().split('T')[0];
@@ -82,6 +96,11 @@ export async function getUserEmailCount(userId: string): Promise<{
     perSecond: number;
     perDay: number;
 }> {
+    // If Redis is not available, return zero counts
+    if (!redis) {
+        return { perSecond: 0, perDay: 0 };
+    }
+
     const now = Date.now();
     const currentSecond = Math.floor(now / 1000);
     const currentDay = new Date().toISOString().split('T')[0];
@@ -111,6 +130,12 @@ export async function resetUserRateLimit(
     userId: string,
     type: 'second' | 'day' | 'all' = 'all'
 ): Promise<void> {
+    // If Redis is not available, do nothing
+    if (!redis) {
+        console.warn('Redis not available - cannot reset rate limit');
+        return;
+    }
+
     const now = Date.now();
     const currentSecond = Math.floor(now / 1000);
     const currentDay = new Date().toISOString().split('T')[0];
