@@ -87,110 +87,113 @@ function isValidEmail(email: string): boolean {
   return emailRegex.test(email);
 }
 
-const emailWorker = new Worker(
-  'emailQueue',
-  async (job) => {
-    const {
-      email,
-      emailFrom,
-      emailSubject,
-      emailMessage,
-      htmlContent,
-      ccEmails,
-      bccEmails,
-      userId,
-      batchId,
-    } = job.data;
+// Initialize email worker only if connection is available
+if (connection && emailQueue) {
+  emailWorker = new Worker(
+    'emailQueue',
+    async (job) => {
+      const {
+        email,
+        emailFrom,
+        emailSubject,
+        emailMessage,
+        htmlContent,
+        ccEmails,
+        bccEmails,
+        userId,
+        batchId,
+      } = job.data;
 
-    // Check user-specific rate limit
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { emailRateLimit: true, emailDailyLimit: true },
-    });
-
-    if (!user) {
-      throw new Error(`User ${userId} not found`);
-    }
-
-    const rateLimitCheck = await checkUserRateLimit(
-      userId,
-      user.emailRateLimit,
-      user.emailDailyLimit
-    );
-
-    if (!rateLimitCheck.allowed) {
-      // Delay the job and retry later
-      console.log(`Rate limit exceeded for user ${userId}: ${rateLimitCheck.reason}`);
-      throw new Error(`Rate limit exceeded: ${rateLimitCheck.reason}`);
-    }
-
-    if (!isValidEmail(email)) {
-      throw new Error(`Invalid email address: ${email}`);
-    }
-
-    try {
-      const mailOptions = {
-        from: emailFrom,
-        to: email,
-        cc: ccEmails.filter(isValidEmail),
-        bcc: bccEmails.filter(isValidEmail),
-        subject: emailSubject,
-        text: emailMessage,
-        html: htmlContent,
-        headers: {
-          'X-User-Id': userId,
-          'X-Batch-Id': batchId
-        },
-        Tags: [
-          { Name: 'userId', Value: userId },
-          { Name: 'batchId', Value: batchId }
-        ]
-      };
-
-      // Create transporter for sending email
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT),
-        secure: process.env.SMTP_SECURE === 'true',
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
+      // Check user-specific rate limit
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { emailRateLimit: true, emailDailyLimit: true },
       });
 
-      await transporter.sendMail(mailOptions);
-      console.log(`Email sent to ${email} for user ${userId}`);
-    } catch (emailError) {
-      console.error(`Failed to send email to ${email}:`, emailError);
-      throw emailError; // triggers BullMQ retry
+      if (!user) {
+        throw new Error(`User ${userId} not found`);
+      }
+
+      const rateLimitCheck = await checkUserRateLimit(
+        userId,
+        user.emailRateLimit,
+        user.emailDailyLimit
+      );
+
+      if (!rateLimitCheck.allowed) {
+        // Delay the job and retry later
+        console.log(`Rate limit exceeded for user ${userId}: ${rateLimitCheck.reason}`);
+        throw new Error(`Rate limit exceeded: ${rateLimitCheck.reason}`);
+      }
+
+      if (!isValidEmail(email)) {
+        throw new Error(`Invalid email address: ${email}`);
+      }
+
+      try {
+        const mailOptions = {
+          from: emailFrom,
+          to: email,
+          cc: ccEmails.filter(isValidEmail),
+          bcc: bccEmails.filter(isValidEmail),
+          subject: emailSubject,
+          text: emailMessage,
+          html: htmlContent,
+          headers: {
+            'X-User-Id': userId,
+            'X-Batch-Id': batchId
+          },
+          Tags: [
+            { Name: 'userId', Value: userId },
+            { Name: 'batchId', Value: batchId }
+          ]
+        };
+
+        // Create transporter for sending email
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: Number(process.env.SMTP_PORT),
+          secure: process.env.SMTP_SECURE === 'true',
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          },
+        });
+
+        await transporter.sendMail(mailOptions);
+        console.log(`Email sent to ${email} for user ${userId}`);
+      } catch (emailError) {
+        console.error(`Failed to send email to ${email}:`, emailError);
+        throw emailError; // triggers BullMQ retry
+      }
+    },
+    {
+      connection,
+      // Removed global rate limiter - now using per-user rate limiting
     }
-  },
-  {
-    connection,
-    // Removed global rate limiter - now using per-user rate limiting
-  }
-);
+  );
 
-emailWorker.on('error', (err) => {
-  console.error('Email worker error:', err);
-});
+  emailWorker.on('error', (err) => {
+    console.error('Email worker error:', err);
+  });
 
-emailWorker.on('failed', (job, err) => {
-  if (job) {
-    console.error(`Email job ${job.id} failed with error:`, err);
-    console.log(`Attempt ${job.attemptsMade} of ${job.opts.attempts}`);
-  } else {
-    console.error('An email job failed but job details are unavailable:', err);
-  }
-});
+  emailWorker.on('failed', (job, err) => {
+    if (job) {
+      console.error(`Email job ${job.id} failed with error:`, err);
+      console.log(`Attempt ${job.attemptsMade} of ${job.opts.attempts}`);
+    } else {
+      console.error('An email job failed but job details are unavailable:', err);
+    }
+  });
 
-emailWorker.on('completed', (job) => {
-  if (job) {
-    console.log(`Email job ${job.id} completed successfully`);
-  } else {
-    console.log('An email job completed but job details are unavailable');
-  }
-});
+  emailWorker.on('completed', (job) => {
+    if (job) {
+      console.log(`Email job ${job.id} completed successfully`);
+    } else {
+      console.log('An email job completed but job details are unavailable');
+    }
+  });
+}
 
 // ----------------------------------------
 // Helper functions
@@ -255,18 +258,20 @@ function replaceVariables(text: string, data: Record<string, string>): string {
 // ----------------------------------------
 // NEW: Certificate queue & worker
 // ----------------------------------------
-const certificateQueue = new Queue('certificateQueue', {
-  connection,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 1000,
+if (connection) {
+  certificateQueue = new Queue('certificateQueue', {
+    connection,
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 1000,
+      },
+      removeOnComplete: true,
+      removeOnFail: 100,
     },
-    removeOnComplete: true,
-    removeOnFail: 100,
-  },
-});
+  });
+}
 
 /**
  * Generate the certificate image, draw placeholders & signatures,
@@ -459,120 +464,124 @@ async function prepareEmailData(
  * The worker that processes jobs in "certificateQueue".
  * Each job has a sub-batch of records from the CSV.
  */
-const certificateWorker = new Worker(
-  'certificateQueue',
-  async (job) => {
-    const {
-      records,
-      templateId,
-      batchId,
-      userId,
-      emailFrom,
-      ccEmails,
-      bccEmails,
-      batchIndex,
-      totalBatches,
-    } = job.data;
+if (connection && certificateQueue) {
+  certificateWorker = new Worker(
+    'certificateQueue',
+    async (job) => {
+      const {
+        records,
+        templateId,
+        batchId,
+        userId,
+        emailFrom,
+        ccEmails,
+        bccEmails,
+        batchIndex,
+        totalBatches,
+      } = job.data;
 
-    // 1. Fetch the template & email config
-    const template = await prisma.template.findUnique({ where: { id: templateId } });
-    if (!template) {
-      throw new Error(`Template ${templateId} not found`);
-    }
-    const emailConfig = await prisma.emailConfig.findUnique({ where: { userId } });
+      // 1. Fetch the template & email config
+      const template = await prisma.template.findUnique({ where: { id: templateId } });
+      if (!template) {
+        throw new Error(`Template ${templateId} not found`);
+      }
+      const emailConfig = await prisma.emailConfig.findUnique({ where: { userId } });
 
-    // 2. Process each record in sub-chunks
-    const concurrencyLimit = 10;
-    const invalidEmails: { email: string; reason: string }[] = [];
+      // 2. Process each record in sub-chunks
+      const concurrencyLimit = 10;
+      const invalidEmails: { email: string; reason: string }[] = [];
 
-    const chunks: Record<string, string>[][] = [];
-    for (let i = 0; i < records.length; i += concurrencyLimit) {
-      chunks.push(records.slice(i, i + concurrencyLimit));
-    }
+      const chunks: Record<string, string>[][] = [];
+      for (let i = 0; i < records.length; i += concurrencyLimit) {
+        chunks.push(records.slice(i, i + concurrencyLimit));
+      }
 
-    for (const chunk of chunks) {
-      await Promise.all(
-        chunk.map(async (record) => {
-          try {
-            // Generate certificate image
-            const { certificateUrl } = await generateCertificateImage(
-              record,
-              template,
-              userId,
-              batchId
-            );
+      for (const chunk of chunks) {
+        await Promise.all(
+          chunk.map(async (record) => {
+            try {
+              // Generate certificate image
+              const { certificateUrl } = await generateCertificateImage(
+                record,
+                template,
+                userId,
+                batchId
+              );
 
-            // Queue up the email if "email" field is present
-            const emailKey = Object.keys(record).find((k) => k.toLowerCase() === 'email');
-            if (emailKey) {
-              const emailAddress = record[emailKey].trim();
-              if (isValidEmail(emailAddress)) {
-                const emailData = await prepareEmailData(
-                  emailAddress,
-                  record,
-                  certificateUrl,
-                  emailConfig,
-                  emailFrom,
-                  ccEmails,
-                  bccEmails,
-                  userId,
-                  batchId
-                );
-                await emailQueue.add('sendEmail', emailData);
-              } else {
-                invalidEmails.push({
-                  email: emailAddress,
-                  reason: 'Invalid email format',
-                });
+              // Queue up the email if "email" field is present
+              const emailKey = Object.keys(record).find((k) => k.toLowerCase() === 'email');
+              if (emailKey) {
+                const emailAddress = record[emailKey].trim();
+                if (isValidEmail(emailAddress)) {
+                  const emailData = await prepareEmailData(
+                    emailAddress,
+                    record,
+                    certificateUrl,
+                    emailConfig,
+                    emailFrom,
+                    ccEmails,
+                    bccEmails,
+                    userId,
+                    batchId
+                  );
+                  if (emailQueue) {
+                    await emailQueue.add('sendEmail', emailData);
+                  }
+                } else {
+                  invalidEmails.push({
+                    email: emailAddress,
+                    reason: 'Invalid email format',
+                  });
+                }
               }
+            } catch (error: any) {
+              console.error('Error processing certificate:', error);
+              // Store failed record for debugging/retry
+              await prisma.failedCertificate.create({
+                data: {
+                  batchId,
+                  data: record,
+                  error: error.message,
+                },
+              });
             }
-          } catch (error: any) {
-            console.error('Error processing certificate:', error);
-            // Store failed record for debugging/retry
-            await prisma.failedCertificate.create({
-              data: {
-                batchId,
-                data: record,
-                error: error.message,
-              },
-            });
-          }
-        })
-      );
-    }
+          })
+        );
+      }
 
-    // 3. Store invalid emails
-    if (invalidEmails.length > 0) {
-      await prisma.invalidEmail.createMany({
-        data: invalidEmails.map(({ email, reason }) => ({
-          email,
-          reason,
-          batchId,
-        })),
+      // 3. Store invalid emails
+      if (invalidEmails.length > 0) {
+        await prisma.invalidEmail.createMany({
+          data: invalidEmails.map(({ email, reason }) => ({
+            email,
+            reason,
+            batchId,
+          })),
+        });
+      }
+
+      // 4. Update batch progress
+      await prisma.batch.update({
+        where: { id: batchId },
+        data: {
+          progress: Math.round(((batchIndex + 1) / totalBatches) * 100),
+        },
       });
-    }
-
-    // 4. Update batch progress
-    await prisma.batch.update({
-      where: { id: batchId },
-      data: {
-        progress: Math.round(((batchIndex + 1) / totalBatches) * 100),
-      },
-    });
-  },
-  {
-    connection,
-    concurrency: 5, // process up to 5 sub-batches concurrently
-    limiter: {
-      max: 100, // up to 100 jobs/sec
-      duration: 1000,
     },
-  }
-);
+    {
+      connection,
+      concurrency: 5, // process up to 5 sub-batches concurrently
+      limiter: {
+        max: 100, // up to 100 jobs/sec
+        duration: 1000,
+      },
+    }
+  );
 
-certificateWorker.on('error', (err) => {
-  console.error('Certificate worker error:', err);
-});
+  certificateWorker.on('error', (err) => {
+    console.error('Certificate worker error:', err);
+  });
+}
 
 // ----------------------------------------
 // POST Handler: Only enqueues work (no inline generation)
@@ -680,19 +689,22 @@ export async function POST(request: Request) {
   }
 
   await Promise.all(
-    batches.map((batchRecords, index) =>
-      certificateQueue.add('generateCertificates', {
-        records: batchRecords,
-        templateId,
-        batchId: batch.id,
-        userId,
-        emailFrom: emailConfig?.customEmail || process.env.EMAIL_FROM,
-        ccEmails,
-        bccEmails,
-        batchIndex: index,
-        totalBatches: batches.length,
-      })
-    )
+    batches.map((batchRecords, index) => {
+      if (certificateQueue) {
+        return certificateQueue.add('generateCertificates', {
+          records: batchRecords,
+          templateId,
+          batchId: batch.id,
+          userId,
+          emailFrom: emailConfig?.customEmail || process.env.EMAIL_FROM,
+          ccEmails,
+          bccEmails,
+          batchIndex: index,
+          totalBatches: batches.length,
+        });
+      }
+      return Promise.resolve();
+    })
   );
 
   // 8. Return response (no certificates created inline)
