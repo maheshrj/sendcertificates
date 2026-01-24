@@ -76,7 +76,7 @@ interface ComplaintNotification {
 async function verifySNSSignature(message: SNSMessage): Promise<boolean> {
     try {
         // In production, you should verify the certificate URL is from AWS
-        if (!message.SigningCertURL.startsWith('https://sns.')) {
+        if (!message.SigningCertURL || !message.SigningCertURL.startsWith('https://sns.')) {
             console.error('Invalid signing cert URL');
             return false;
         }
