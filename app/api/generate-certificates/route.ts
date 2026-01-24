@@ -12,6 +12,7 @@ import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import path from 'path';
 import { checkUserRateLimit } from '@/app/lib/rate-limiter';
+import { checkSESRateLimit } from '@/app/lib/ses-rate-limiter';
 
 // ----------------------------------------
 // Font Registration (if you need custom fonts)
@@ -98,10 +99,13 @@ if (connection && emailQueue) {
         emailSubject,
         emailMessage,
         htmlContent,
+        plainTextContent,
         ccEmails,
         bccEmails,
         userId,
         batchId,
+        unsubscribeUrl,
+        messageId,
       } = job.data;
 
       // Check user-specific rate limit
@@ -130,23 +134,47 @@ if (connection && emailQueue) {
         throw new Error(`Invalid email address: ${email}`);
       }
 
+      // Check suppression list
+      const suppressed = await prisma.suppressionList.findUnique({
+        where: { email: email.toLowerCase() },
+      });
+
+      if (suppressed) {
+        console.log(`Email ${email} is suppressed (${suppressed.reason}). Skipping.`);
+        // Don't throw error - just skip this email
+        return;
+      }
+
+      // Check global SES rate limit
+      const sesRateLimitCheck = await checkSESRateLimit();
+      if (!sesRateLimitCheck.allowed) {
+        console.log(`Global SES rate limit exceeded: ${sesRateLimitCheck.reason}`);
+        throw new Error(`SES rate limit exceeded: ${sesRateLimitCheck.reason}`);
+      }
+
       try {
+        // Get email config for support email
+        const emailConfig = await prisma.emailConfig.findUnique({
+          where: { userId },
+        });
+
         const mailOptions = {
           from: emailFrom,
           to: email,
           cc: ccEmails.filter(isValidEmail),
           bcc: bccEmails.filter(isValidEmail),
           subject: emailSubject,
-          text: emailMessage,
+          text: plainTextContent || emailMessage,
           html: htmlContent,
           headers: {
             'X-User-Id': userId,
-            'X-Batch-Id': batchId
+            'X-Batch-Id': batchId,
+            'X-Entity-Ref-ID': messageId,
+            'Reply-To': emailConfig?.supportEmail || process.env.SUPPORT_EMAIL || emailFrom,
+            'List-Unsubscribe': `<mailto:unsubscribe@${process.env.NEXT_PUBLIC_BASE_URL?.replace('https://', '') || 'sendcertificates.com'}?subject=unsubscribe>, <${unsubscribeUrl}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+            'Precedence': 'bulk',
           },
-          Tags: [
-            { Name: 'userId', Value: userId },
-            { Name: 'batchId', Value: batchId }
-          ]
         };
 
         // Create transporter for sending email
@@ -169,7 +197,11 @@ if (connection && emailQueue) {
     },
     {
       connection,
-      // Removed global rate limiter - now using per-user rate limiting
+      concurrency: 5,
+      limiter: {
+        max: 10, // 10 emails per second (global SES limit)
+        duration: 1000,
+      },
     }
   );
 
@@ -418,45 +450,125 @@ async function prepareEmailData(
     record
   );
 
-  // Example email HTML
+  // Get recipient name for personalization
+  const nameKey = Object.keys(record).find((k) => k.toLowerCase() === 'name');
+  const recipientName = nameKey ? record[nameKey].trim() : '';
+
+  // Personalize subject line
+  const personalizedSubject = recipientName
+    ? `${emailSubject}, ${recipientName}!`
+    : emailSubject;
+
+  // Generate unsubscribe URL
+  const unsubscribeUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/api/unsubscribe?email=${encodeURIComponent(emailAddress)}`;
+
+  // Generate unique message ID
+  const messageId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}@${process.env.NEXT_PUBLIC_BASE_URL?.replace('https://', '') || 'sendcertificates.com'}`;
+
+  // Get certificate unique identifier for validation
+  const certIdKey = Object.keys(record).find((k) => k.toLowerCase() === 'certificateid');
+  const validationUrl = certIdKey
+    ? `${process.env.NEXT_PUBLIC_BASE_URL}/validate/${record[certIdKey]}`
+    : null;
+
+  // Generate plain text version
+  const plainTextContent = `
+${emailHeading}
+
+${emailMessage}
+
+Download your certificate: ${certificateUrl}
+
+${validationUrl ? `Verify this certificate: ${validationUrl}\n\n` : ''}
+---
+This certificate was sent by ${emailConfig?.customDomain || 'SendCertificates'}
+
+Questions? Contact us at ${emailConfig?.supportEmail || 'support@example.com'}
+
+Unsubscribe from certificate emails: ${unsubscribeUrl}
+  `.trim();
+
+  // Enhanced email HTML with professional footer and prominent download button
   const htmlContent = `
-    <div style="background-color: #f0f4f8; padding: 50px;">
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto; background: #fff; padding: 20px;">
-        ${emailConfig?.logoUrl
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${personalizedSubject}</title>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #f0f4f8;">
+      <div style="background-color: #f0f4f8; padding: 50px 20px;">
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          ${emailConfig?.logoUrl
       ? `<div style="text-align: center; margin-bottom: 20px;">
                  <img src="${emailConfig.logoUrl}" alt="Logo" height="50" />
                </div>`
       : ''
     }
-        <h2 style="color: #333; text-align: center;">${emailHeading}</h2>
-        <p style="color: #555;">${emailMessage}</p>
-        <p style="text-align: center;">
-          <a href="${certificateUrl}" style="text-decoration: none; color: #007BFF;">
-            Download your certificate
-          </a>
-        </p>
-        <footer style="margin-top: 30px; text-align: center; font-size: 14px; color: #777;">
-          <p>
-            Having trouble with your certificate? Contact us at
-            <a href="mailto:${emailConfig?.supportEmail}" style="color: #007BFF; text-decoration: none;">
-              ${emailConfig?.supportEmail}
+          <h2 style="color: #333; text-align: center; margin-bottom: 20px;">${emailHeading}</h2>
+          ${recipientName ? `<p style="color: #555; font-size: 16px;">Dear ${recipientName},</p>` : ''}
+          <p style="color: #555; font-size: 16px;">${emailMessage}</p>
+          
+          <!-- Prominent Download Button -->
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${certificateUrl}" style="display: inline-block; background-color: #007BFF; color: #ffffff; text-decoration: none; padding: 14px 30px; border-radius: 5px; font-size: 16px; font-weight: bold;">
+              📥 Download Your Certificate
             </a>
+          </div>
+          
+          <!-- Alternative text link -->
+          <p style="text-align: center; font-size: 14px; color: #666;">
+            Or copy this link: <a href="${certificateUrl}" style="color: #007BFF; word-break: break-all;">${certificateUrl}</a>
           </p>
-        </footer>
+          
+          ${validationUrl ? `
+          <!-- Certificate Validation -->
+          <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <p style="margin: 0; font-size: 14px; color: #555;">
+              🔒 <strong>Verify this certificate:</strong><br>
+              <a href="${validationUrl}" style="color: #007BFF; text-decoration: none;">${validationUrl}</a>
+            </p>
+          </div>
+          ` : ''}
+          
+          <!-- Professional Footer -->
+          <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; font-size: 12px; color: #777;">
+            <p style="margin: 5px 0;">This certificate was sent by <strong>${emailConfig?.customDomain || 'SendCertificates'}</strong></p>
+            <p style="margin: 5px 0;">
+              Questions? Contact us at 
+              <a href="mailto:${emailConfig?.supportEmail || 'support@example.com'}" style="color: #007BFF; text-decoration: none;">
+                ${emailConfig?.supportEmail || 'support@example.com'}
+              </a>
+            </p>
+            <p style="margin: 15px 0 5px 0;">
+              <a href="${unsubscribeUrl}" style="color: #999; text-decoration: underline; font-size: 11px;">
+                Unsubscribe from certificate emails
+              </a>
+            </p>
+            <p style="margin: 10px 0; font-size: 11px; color: #999;">
+              📧 This is an automated message. Please do not reply to this email.
+            </p>
+          </footer>
+        </div>
       </div>
-    </div>
+    </body>
+    </html>
   `;
 
   return {
     email: emailAddress,
     emailFrom,
-    emailSubject,
+    emailSubject: personalizedSubject,
     emailMessage,
     htmlContent,
+    plainTextContent,
     ccEmails,
     bccEmails,
     userId,
-    batchId
+    batchId,
+    unsubscribeUrl,
+    messageId,
   };
 }
 
@@ -572,7 +684,7 @@ if (connection && certificateQueue) {
       connection,
       concurrency: 5, // process up to 5 sub-batches concurrently
       limiter: {
-        max: 100, // up to 100 jobs/sec
+        max: 10, // up to 10 jobs/sec (aligned with SES limit)
         duration: 1000,
       },
     }

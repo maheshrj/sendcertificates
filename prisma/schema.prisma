@@ -17,15 +17,15 @@ model FailedCertificate {
 }
 
 model Batch {
-  id           String        @id @default(cuid())
-  name         String
-  creatorId    String
-  progress         Int     @default(0)
+  id                 String              @id @default(cuid())
+  name               String
+  creatorId          String
+  progress           Int                 @default(0)
   failedCertificates FailedCertificate[]
-  creator      User          @relation(fields: [creatorId], references: [id])
-  certificates Certificate[]
-  invalidEmails InvalidEmail[]
-  createdAt    DateTime      @default(now())
+  creator            User                @relation(fields: [creatorId], references: [id])
+  certificates       Certificate[]
+  invalidEmails      InvalidEmail[]
+  createdAt          DateTime            @default(now())
 
   @@index([creatorId])
   @@index([creatorId, createdAt(sort: Desc)])
@@ -35,21 +35,21 @@ model TokenTransaction {
   id        String   @id @default(cuid())
   userId    String
   amount    Int
-  type      String   
-  reason    String   
-  email     String   
+  type      String
+  reason    String
+  email     String
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
 }
 
 model User {
-  id                      String        @id @default(cuid())
+  id                      String             @id @default(cuid())
   name                    String
-  email                   String        @unique
+  email                   String             @unique
   password                String?
   organization            String?
   phone                   String?
-  emailVerified           Boolean       @default(false)
+  emailVerified           Boolean            @default(false)
   verificationToken       String?
   verificationTokenExpiry DateTime?
   resetToken              String?
@@ -59,30 +59,30 @@ model User {
   batches                 Batch[]
   transactions            TokenTransaction[]
   emailConfig             EmailConfig?
-  tokens                  Int           @default(100)
-  is_admin                Boolean       @default(false)
-  is_api_enabled          Boolean       @default(false) 
+  tokens                  Int                @default(100)
+  is_admin                Boolean            @default(false)
+  is_api_enabled          Boolean            @default(false)
   apiKeys                 ApiKey[]
-  emailRateLimit          Int           @default(10)
-  emailDailyLimit         Int           @default(10000)
-  createdAt               DateTime      @default(now())
-  updatedAt               DateTime      @updatedAt
+  emailRateLimit          Int                @default(10)
+  emailDailyLimit         Int                @default(10000)
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 }
 
 model Template {
-  id           String        @id @default(cuid())
-  name         String
-  imageUrl     String
-  width        Int
-  height       Int
-  placeholders Json
-  signatures   Json
+  id             String        @id @default(cuid())
+  name           String
+  imageUrl       String
+  width          Int
+  height         Int
+  placeholders   Json
+  signatures     Json
   qrPlaceholders Json?
-  creatorId    String
-  creator      User          @relation(fields: [creatorId], references: [id])
-  certificates Certificate[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  creatorId      String
+  creator        User          @relation(fields: [creatorId], references: [id])
+  certificates   Certificate[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 }
 
 model InvalidEmail {
@@ -90,7 +90,7 @@ model InvalidEmail {
   email     String
   batchId   String
   batch     Batch    @relation(fields: [batchId], references: [id])
-  reason    String   
+  reason    String
   createdAt DateTime @default(now())
 }
 
@@ -109,7 +109,6 @@ model Certificate {
 
   @@index([batchId])
   @@index([creatorId])
-
 }
 
 model EmailConfig {
@@ -117,8 +116,8 @@ model EmailConfig {
   userId         String   @unique
   defaultSubject String   @default("Your Certificate")
   defaultMessage String   @default("Please find your certificate attached.")
-  logoUrl        String?  
-  emailHeading   String   @default("Congratulations on receiving your certificate!") 
+  logoUrl        String?
+  emailHeading   String   @default("Congratulations on receiving your certificate!")
   supportEmail   String?  @default("support@example.com")
   user           User     @relation(fields: [userId], references: [id])
   createdAt      DateTime @default(now())
@@ -126,25 +125,57 @@ model EmailConfig {
   customDomain   String?
   customEmail    String?
   isVerified     Boolean  @default(false)
-  dkimRecords    Json?    
+  dkimRecords    Json?
 }
 
 model ApiKey {
-  id          String    @id @default(cuid())
-  name        String
-  key         String    @unique
-  userId      String
-  user        User      @relation(fields: [userId], references: [id])
-  lastUsed    DateTime?
-  createdAt   DateTime  @default(now())
-  expiresAt   DateTime?
-  isActive    Boolean   @default(true)
+  id        String    @id @default(cuid())
+  name      String
+  key       String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  lastUsed  DateTime?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+  isActive  Boolean   @default(true)
 }
 
 model Bounce {
+  id             String   @id @default(cuid())
+  email          String
+  userId         String
+  batchId        String
+  bounceType     String? // 'hard' or 'soft'
+  diagnosticCode String?  @db.Text
+  createdAt      DateTime @default(now())
+
+  @@index([email])
+  @@index([userId])
+  @@index([batchId])
+}
+
+model Complaint {
+  id            String   @id @default(cuid())
+  email         String
+  userId        String
+  batchId       String?
+  complaintType String? // 'abuse', 'auth-failure', 'fraud', 'not-spam', 'other', 'virus'
+  timestamp     DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([email])
+  @@index([userId])
+  @@index([batchId])
+}
+
+model SuppressionList {
   id        String   @id @default(cuid())
-  email     String
-  userId    String
-  batchId   String
+  email     String   @unique
+  reason    String // 'bounce', 'complaint', 'unsubscribe', 'manual'
+  type      String // 'hard_bounce', 'soft_bounce', 'complaint', 'unsubscribe'
+  source    String? // Additional context about the source
   createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([reason])
 }
