@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { EmailDeliveryChart } from '@/app/components/charts/EmailDeliveryChart';
+import { BatchTimelineChart } from '@/app/components/charts/BatchTimelineChart';
+import { SuccessRateChart } from '@/app/components/charts/SuccessRateChart';
 
 interface DomainStats {
   delivered: number;
@@ -9,8 +12,8 @@ interface DomainStats {
 
 interface Engagement {
   sent: number;
-  averageReadRate: string;   
-  averageDeleteRate: string; 
+  averageReadRate: string;
+  averageDeleteRate: string;
 }
 
 interface AnalyticsData {
@@ -22,34 +25,42 @@ interface AnalyticsData {
   error?: string;
 }
 
+interface ChartData {
+  overview: { totalCertificates: number; totalBatches: number };
+  timeline: { labels: string[]; data: number[] };
+  batchCertificateCounts: Array<{ batchName: string; count: number; date: string }>;
+}
+
 export function AnalyticsSummary() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [chartData, setChartData] = useState<ChartData | null>(null);
+  const [chartsLoading, setChartsLoading] = useState(true);
 
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
         const res = await fetch('/api/analytics', { credentials: 'include' });
         const json = await res.json();
-        
+
         if (res.ok) {
           setData(json);
         } else {
-          setData({ 
-            error: json.error, 
-            totalBatches: 0, 
-            totalCertificates: 0, 
-            totalEmailsSent: 0, 
+          setData({
+            error: json.error,
+            totalBatches: 0,
+            totalCertificates: 0,
+            totalEmailsSent: 0,
             domainStats: null,
             engagement: null
           });
         }
       } catch (error) {
         console.error('Failed to fetch analytics:', error);
-        setData({ 
-          error: 'Failed to fetch analytics', 
-          totalBatches: 0, 
-          totalCertificates: 0, 
+        setData({
+          error: 'Failed to fetch analytics',
+          totalBatches: 0,
+          totalCertificates: 0,
           totalEmailsSent: 0,
           domainStats: null,
           engagement: null
@@ -59,7 +70,22 @@ export function AnalyticsSummary() {
       }
     };
 
+    const fetchChartData = async () => {
+      try {
+        const res = await fetch('/api/analytics/charts-data', { credentials: 'include' });
+        if (res.ok) {
+          const json = await res.json();
+          setChartData(json);
+        }
+      } catch (error) {
+        console.error('Failed to fetch chart data:', error);
+      } finally {
+        setChartsLoading(false);
+      }
+    };
+
     fetchAnalytics();
+    fetchChartData();
   }, []);
 
   if (loading) {
@@ -89,7 +115,7 @@ export function AnalyticsSummary() {
   return (
     <div className="bg-white shadow rounded-lg p-6 mb-6">
       <h2 className="text-xl font-semibold mb-4">Your Analytics</h2>
-      
+
       {/* Basic Analytics */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="border rounded p-4 text-center">
@@ -105,6 +131,13 @@ export function AnalyticsSummary() {
           <p className="text-2xl mt-2">{data?.totalEmailsSent ?? 0}</p>
         </div>
       </div>
+
+      {/* Charts Section */}
+      {!chartsLoading && chartData && chartData.timeline.labels.length > 0 && (
+        <div className="mb-6">
+          <BatchTimelineChart labels={chartData.timeline.labels} data={chartData.timeline.data} />
+        </div>
+      )}
 
       {/* Domain-level Stats (if any) */}
       {data?.domainStats && (
