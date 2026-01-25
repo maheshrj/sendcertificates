@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { EmailDeliveryChart } from '@/app/components/charts/EmailDeliveryChart';
 import { BatchTimelineChart } from '@/app/components/charts/BatchTimelineChart';
-import { SuccessRateChart } from '@/app/components/charts/SuccessRateChart';
+import { CertificateOverviewChart } from '@/app/components/charts/CertificateOverviewChart';
+import { BatchComparisonChart } from '@/app/components/charts/BatchComparisonChart';
 
 interface DomainStats {
   delivered: number;
@@ -135,8 +135,9 @@ export function AnalyticsSummary() {
 
       {/* Charts Section */}
       {!chartsLoading && chartData && chartData.timeline.labels.length > 0 && (
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="space-y-6 mb-6">
+          {/* Date Range Filter */}
+          <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold">Performance Trends</h3>
             <div className="flex items-center gap-2">
               <label className="text-sm text-gray-600">Time Range:</label>
@@ -155,6 +156,17 @@ export function AnalyticsSummary() {
               </select>
             </div>
           </div>
+
+          {/* Charts Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <CertificateOverviewChart
+              totalCertificates={chartData.overview.totalCertificates}
+              totalBatches={chartData.overview.totalBatches}
+            />
+            <BatchComparisonChart batches={chartData.batchCertificateCounts} />
+          </div>
+
+          {/* Timeline Chart - Full Width */}
           <BatchTimelineChart labels={chartData.timeline.labels} data={chartData.timeline.data} />
         </div>
       )}
