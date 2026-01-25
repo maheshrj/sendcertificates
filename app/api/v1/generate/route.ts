@@ -275,35 +275,51 @@ export async function POST(request: Request) {
     const emailMessage = replaceVariables(emailConfig?.defaultMessage || 'Please find your certificate attached.', placeholders);
     const emailHeading = replaceVariables(emailConfig?.emailHeading || 'Congratulations on receiving your certificate!', placeholders);
     const htmlContent = `
-     <div style="background-color: #f0f4f8; padding: 100px 0;">
-       <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto; border: 1px solid #d0d7de; border-radius: 10px; padding: 20px; background-color: #ffffff;">
-         ${emailConfig?.logoUrl ? `
-         <div style="text-align: center; margin-bottom: 20px;">
-           <img src="${emailConfig.logoUrl}" alt="Certifier Logo" style="height: 50px;" />
-         </div>
-         ` : ''}
-         <h1 style="font-size: 24px; text-align: center; margin: 0 0 20px 0; color: #004085;">
-           ${emailHeading}
-         </h1>
-         <p style="font-size: 16px; color: #555; text-align: center;">
-           ${emailMessage}
-         </p>
-         <div style="text-align: center; margin-top: 30px;">
-           <a href="${certificateUrl}" style="background-color: #007BFF; color: #fff; padding: 10px 20px; font-size: 16px; text-decoration: none; border-radius: 5px;">
-             Download Certificate
-           </a>
-         </div>
-         <footer style="margin-top: 30px; text-align: center; font-size: 14px; color: #777;">
-           <p>
-             Having trouble with your certificate? Contact us at
-             <a href="mailto:${emailConfig?.supportEmail}" style="color: #007BFF; text-decoration: none;">
-               ${emailConfig?.supportEmail}
-             </a>
-           </p>
-         </footer>
-       </div>
-     </div>
-   `;
+      <div style="background-color: #f0f4f8; padding: 100px 0;">
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto; border: 1px solid #d0d7de; border-radius: 10px; padding: 20px; background-color: #ffffff;">
+          ${emailConfig?.logoUrl ? `
+          <div style="text-align: center; margin-bottom: 20px;">
+            <img src="${emailConfig.logoUrl}" alt="Logo" style="height: 50px;" />
+          </div>
+          ` : ''}
+          <h1 style="font-size: 24px; text-align: center; margin: 0 0 20px 0; color: #004085;">
+            ${emailHeading}
+          </h1>
+          <p style="font-size: 16px; color: #555; text-align: center;">
+            ${emailMessage}
+          </p>
+          <div style="text-align: center; margin-top: 30px;">
+            <a href="${certificateUrl}" style="background-color: #007BFF; color: #fff; padding: 12px 30px; font-size: 16px; text-decoration: none; border-radius: 5px; display: inline-block;">
+              Download Certificate
+            </a>
+          </div>
+          
+          <!-- AWS Compliance Footer -->
+          <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
+            <p style="font-size: 11px; color: #999; text-align: center; margin: 5px 0;">
+              Certificate Link: <a href="${certificateUrl}" style="color: #007BFF; word-break: break-all; text-decoration: none;">${certificateUrl}</a>
+            </p>
+            <p style="font-size: 10px; color: #aaa; text-align: center; margin: 5px 0;">
+              This link is provided for verification and AWS SES compliance.
+            </p>
+          </div>
+          
+          <footer style="margin-top: 30px; text-align: center; font-size: 14px; color: #777;">
+            <p style="margin: 10px 0;">
+              Having trouble with your certificate? Contact us at
+              <a href="mailto:${emailConfig?.supportEmail}" style="color: #007BFF; text-decoration: none;">
+                ${emailConfig?.supportEmail}
+              </a>
+            </p>
+            <p style="margin-top: 15px; font-size: 12px;">
+              <a href="${process.env.NEXT_PUBLIC_BASE_URL}/unsubscribe?email=${email}" style="color: #007BFF; text-decoration: none;">
+                Unsubscribe from ${emailConfig?.organizationName || 'our emails'}
+              </a>
+            </p>
+          </footer>
+        </div>
+      </div>
+    `;
     // Queue email if Redis is available
     if (emailQueue) {
       await emailQueue.add('sendEmail', {
