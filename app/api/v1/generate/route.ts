@@ -313,7 +313,7 @@ export async function POST(request: Request) {
             </p>
             <p style="margin-top: 15px; font-size: 12px;">
               <a href="${process.env.NEXT_PUBLIC_BASE_URL}/unsubscribe?email=${email}" style="color: #007BFF; text-decoration: none;">
-                Unsubscribe from ${emailConfig?.organizationName || 'our emails'}
+                Unsubscribe
               </a>
             </p>
           </footer>
