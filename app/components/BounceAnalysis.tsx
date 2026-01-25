@@ -99,7 +99,19 @@ export function BounceAnalysis({ batches = [] }: BounceAnalysisProps) {
       return;
     }
 
-    if (!confirm(`Resend certificates to ${selectedEmails.length} email(s)?`)) {
+    // Calculate estimated tokens (rough estimate: 1 per email, actual may be higher with CC/BCC)
+    const estimatedTokens = selectedEmails.length;
+
+    const confirmMessage = `Resend certificates to ${selectedEmails.length} email(s)?
+
+This will:
+• Create a new batch: "${bounceData?.batch.name} - Resend"
+• Deduct approximately ${estimatedTokens}+ tokens (includes CC/BCC if any)
+• Queue emails for immediate sending
+
+Continue?`;
+
+    if (!confirm(confirmMessage)) {
       return;
     }
 
@@ -120,12 +132,19 @@ export function BounceAnalysis({ batches = [] }: BounceAnalysisProps) {
       }
 
       const result = await res.json();
-      alert(`✅ Resend initiated!\nNew batch: ${result.newBatchName}\nEmails: ${result.emailsToResend}`);
+      alert(`✅ Resend Successful!
+
+New Batch: ${result.newBatchName}
+Emails Queued: ${result.emailsToResend}
+Tokens Deducted: ${result.tokensDeducted}
+
+The certificates are now being generated and will be sent shortly.`);
+
       setSelectedEmails([]);
       // Refresh the data
       handleAnalyze();
     } catch (error: any) {
-      alert(`Failed to resend: ${error.message}`);
+      alert(`❌ Resend Failed\n\n${error.message}`);
     } finally {
       setResending(false);
     }
@@ -186,8 +205,8 @@ export function BounceAnalysis({ batches = [] }: BounceAnalysisProps) {
             onClick={handleAnalyze}
             disabled={isLoading || !selectedBatch}
             className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white ${isLoading || !selectedBatch
-                ? 'bg-indigo-400 cursor-not-allowed'
-                : 'bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500'
+              ? 'bg-indigo-400 cursor-not-allowed'
+              : 'bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500'
               }`}
           >
             {isLoading ? (

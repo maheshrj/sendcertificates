@@ -1,0 +1,190 @@
+import { NextResponse } from 'next/server';
+import prisma from '@/app/lib/db';
+import jwt from 'jsonwebtoken';
+
+function getUserIdFromRequest(request: Request): string | null {
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+        const cookieHeader = request.headers.get('cookie');
+        if (!cookieHeader) return null;
+
+        const tokenMatch = cookieHeader.match(/token=([^;]+)/);
+        if (!tokenMatch) return null;
+
+        try {
+            const decoded = jwt.verify(tokenMatch[1], process.env.JWT_SECRET!) as { userId: string };
+            return decoded.userId;
+        } catch {
+            return null;
+        }
+    }
+
+    const token = authHeader.substring(7);
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+        return decoded.userId;
+    } catch {
+        return null;
+    }
+}
+
+function generateUniqueId(): string {
+    return `cert_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+}
+
+function calculateTokens(certificateData: any): number {
+    let tokens = 1; // Base token for the email
+
+    // Add CC tokens
+    if (certificateData.cc && Array.isArray(certificateData.cc)) {
+        tokens += certificateData.cc.length;
+    }
+
+    // Add BCC tokens
+    if (certificateData.bcc && Array.isArray(certificateData.bcc)) {
+        tokens += certificateData.bcc.length;
+    }
+
+    return tokens;
+}
+
+export async function POST(request: Request) {
+    try {
+        const userId = getUserIdFromRequest(request);
+        if (!userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const body = await request.json();
+        const { originalBatchId, emails } = body;
+
+        // Validate input
+        if (!originalBatchId || !emails || !Array.isArray(emails) || emails.length === 0) {
+            return NextResponse.json(
+                { error: 'Invalid request. Provide originalBatchId and emails array' },
+                { status: 400 }
+            );
+        }
+
+        // 1. Verify user owns the original batch
+        const originalBatch = await prisma.batch.findFirst({
+            where: {
+                id: originalBatchId,
+                creatorId: userId
+            }
+        });
+
+        if (!originalBatch) {
+            return NextResponse.json(
+                { error: 'Batch not found or unauthorized' },
+                { status: 404 }
+            );
+        }
+
+        // 2. Get original certificates for the selected emails
+        // Note: Since we can't easily query JSON fields with 'in', we'll fetch all certificates
+        // from the batch and filter in memory
+        const allCertificates = await prisma.certificate.findMany({
+            where: {
+                batchId: originalBatchId
+            }
+        });
+
+        // Filter certificates by email in memory
+        const originalCertificates = allCertificates.filter(cert => {
+            const certData = cert.data as any;
+            return emails.includes(certData.email);
+        });
+        if (originalCertificates.length === 0) {
+            return NextResponse.json(
+                { error: 'No certificates found for the provided emails' },
+                { status: 404 }
+            );
+        }
+
+        // 3. Calculate total tokens needed
+        let totalTokens = 0;
+        originalCertificates.forEach(cert => {
+            totalTokens += calculateTokens(cert.data);
+        });
+
+        // 4. Check user has enough tokens
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { tokens: true }
+        });
+
+        if (!user || user.tokens < totalTokens) {
+            return NextResponse.json(
+                {
+                    error: `Insufficient tokens. Need ${totalTokens}, have ${user?.tokens || 0}`,
+                    tokensNeeded: totalTokens,
+                    tokensAvailable: user?.tokens || 0
+                },
+                { status: 400 }
+            );
+        }
+
+        // 5. Create new batch with "- Resend" suffix
+        const newBatchName = `${originalBatch.name} - Resend`;
+        const newBatch = await prisma.batch.create({
+            data: {
+                name: newBatchName,
+                creatorId: userId,
+                progress: 0
+            }
+        });
+
+        // 6. Create new certificates for resend
+        const newCertificates = await Promise.all(
+            originalCertificates.map(cert =>
+                prisma.certificate.create({
+                    data: {
+                        templateId: cert.templateId,
+                        batchId: newBatch.id,
+                        uniqueIdentifier: generateUniqueId(),
+                        data: cert.data as any, // Cast to any to avoid JsonValue type issues
+                        generatedImageUrl: '', // Will be generated by worker
+                        creatorId: userId
+                    }
+                })
+            )
+        );
+
+        // 7. Deduct tokens from user
+        await prisma.user.update({
+            where: { id: userId },
+            data: {
+                tokens: { decrement: totalTokens }
+            }
+        });
+
+        // 8. Create token transaction record
+        await prisma.tokenTransaction.create({
+            data: {
+                userId,
+                amount: -totalTokens,
+                type: 'deduction',
+                reason: 'Resend failed emails',
+                email: `Batch: ${newBatchName}`
+            }
+        });
+
+        // 9. Return success response
+        return NextResponse.json({
+            success: true,
+            newBatchId: newBatch.id,
+            newBatchName: newBatchName,
+            emailsToResend: newCertificates.length,
+            tokensDeducted: totalTokens,
+            message: `Successfully created resend batch with ${newCertificates.length} certificates`
+        });
+
+    } catch (error) {
+        console.error('Error in resend-failed API:', error);
+        return NextResponse.json(
+            { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+            { status: 500 }
+        );
+    }
+}
