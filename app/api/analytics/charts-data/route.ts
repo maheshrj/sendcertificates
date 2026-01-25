@@ -35,14 +35,25 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        // Get date range from query parameter
+        const url = new URL(request.url);
+        const daysParam = url.searchParams.get('days') || '30';
+        const days = daysParam === 'all' ? null : parseInt(daysParam);
+
+        // Calculate date filter
+        const dateFilter = days ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : null;
+
         // Get all batches for user with certificates
         const batches = await prisma.batch.findMany({
-            where: { creatorId: userId },
+            where: {
+                creatorId: userId,
+                ...(dateFilter && { createdAt: { gte: dateFilter } })
+            },
             include: {
                 certificates: true
             },
             orderBy: { createdAt: 'desc' },
-            take: 30 // Last 30 batches
+            take: days === 7 ? 30 : days === 30 ? 60 : 100 // Adjust batch limit based on range
         });
 
         // Calculate total certificates (simplified since status field doesn't exist)
@@ -56,12 +67,16 @@ export async function GET(request: Request) {
             timelineMap.set(date, (timelineMap.get(date) || 0) + count);
         });
 
+        // Sort and limit timeline data
+        const sortedDates = Array.from(timelineMap.keys()).sort();
+        const limitedDates = days ? sortedDates.slice(-days) : sortedDates;
+
         const timeline = {
-            labels: Array.from(timelineMap.keys()).reverse().slice(0, 14), // Last 14 days
-            data: Array.from(timelineMap.values()).reverse().slice(0, 14)
+            labels: limitedDates,
+            data: limitedDates.map(date => timelineMap.get(date) || 0)
         };
 
-        // Batch certificate counts (last 10 batches)
+        // Batch certificate counts (last 10 batches in range)
         const batchCertificateCounts = batches.slice(0, 10).map(batch => ({
             batchName: batch.name,
             count: batch.certificates.length,

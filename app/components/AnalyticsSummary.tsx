@@ -36,6 +36,7 @@ export function AnalyticsSummary() {
   const [loading, setLoading] = useState(true);
   const [chartData, setChartData] = useState<ChartData | null>(null);
   const [chartsLoading, setChartsLoading] = useState(true);
+  const [dateRange, setDateRange] = useState<'7' | '30' | '90' | 'all'>('30');
 
   useEffect(() => {
     const fetchAnalytics = async () => {
@@ -72,7 +73,7 @@ export function AnalyticsSummary() {
 
     const fetchChartData = async () => {
       try {
-        const res = await fetch('/api/analytics/charts-data', { credentials: 'include' });
+        const res = await fetch(`/api/analytics/charts-data?days=${dateRange}`, { credentials: 'include' });
         if (res.ok) {
           const json = await res.json();
           setChartData(json);
@@ -86,7 +87,7 @@ export function AnalyticsSummary() {
 
     fetchAnalytics();
     fetchChartData();
-  }, []);
+  }, [dateRange]);
 
   if (loading) {
     return (
@@ -135,6 +136,25 @@ export function AnalyticsSummary() {
       {/* Charts Section */}
       {!chartsLoading && chartData && chartData.timeline.labels.length > 0 && (
         <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">Performance Trends</h3>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">Time Range:</label>
+              <select
+                value={dateRange}
+                onChange={(e) => {
+                  setDateRange(e.target.value as '7' | '30' | '90' | 'all');
+                  setChartsLoading(true);
+                }}
+                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="7">Last 7 Days</option>
+                <option value="30">Last 30 Days</option>
+                <option value="90">Last 90 Days</option>
+                <option value="all">All Time</option>
+              </select>
+            </div>
+          </div>
           <BatchTimelineChart labels={chartData.timeline.labels} data={chartData.timeline.data} />
         </div>
       )}
