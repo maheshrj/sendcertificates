@@ -32,7 +32,7 @@ export function BounceAnalysis({ batches = [] }: BounceAnalysisProps) {
 
     try {
       // Redirect to results page with batch ID
-      router.push(`/analytics/bounce-results?batchId=${selectedBatch}`);
+      router.push(`/analytics/bounce-results/${selectedBatch}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to analyze bounces');
     } finally {
@@ -50,7 +50,7 @@ export function BounceAnalysis({ batches = [] }: BounceAnalysisProps) {
           </p>
         </div>
       </div>
-      
+
       <div className="space-y-4">
         <div>
           <label htmlFor="batch-select" className="block text-sm font-medium text-gray-700 mb-2">
@@ -93,11 +93,10 @@ export function BounceAnalysis({ batches = [] }: BounceAnalysisProps) {
           <button
             onClick={handleAnalyze}
             disabled={isLoading || !selectedBatch}
-            className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white ${
-              isLoading || !selectedBatch
+            className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white ${isLoading || !selectedBatch
                 ? 'bg-indigo-400 cursor-not-allowed'
                 : 'bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500'
-            }`}
+              }`}
           >
             {isLoading ? (
               <>
