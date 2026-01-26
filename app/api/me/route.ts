@@ -17,12 +17,14 @@ export async function GET() {
     const decoded = jwt.verify(token, JWT_SECRET) as any;
     const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
     if (user) {
-      return NextResponse.json({ 
-        id: user.id, 
-        name: user.name, 
-        email: user.email,
-        is_admin: user.is_admin,
-        is_api_enabled: user.is_api_enabled
+      return NextResponse.json({
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          is_admin: user.is_admin,
+          is_api_enabled: user.is_api_enabled
+        }
       });
     } else {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });

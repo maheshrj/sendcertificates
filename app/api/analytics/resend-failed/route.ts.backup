@@ -1,0 +1,88 @@
+import { NextResponse } from 'next/server';
+import prisma from '@/app/lib/db';
+import jwt from 'jsonwebtoken';
+function getUserIdFromRequest(request: Request): string | null {
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    const cookieHeader = request.headers.get('cookie');
+    if (!cookieHeader) return null;
+    
+    const tokenMatch = cookieHeader.match(/token=([^;]+)/);
+    if (!tokenMatch) return null;
+    
+    try {
+      const decoded = jwt.verify(tokenMatch[1], process.env.JWT_SECRET!) as { userId: string };
+      return decoded.userId;
+    } catch {
+      return null;
+    }
+  }
+  
+  const token = authHeader.substring(7);
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+    return decoded.userId;
+  } catch {
+    return null;
+  }
+}
+export async function POST(request: Request) {
+  try {
+    const userId = getUserIdFromRequest(request);
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const { originalBatchId, emails } = await request.json();
+    if (!originalBatchId || !emails || !Array.isArray(emails) || emails.length === 0) {
+      return NextResponse.json(
+        { error: 'Invalid request. Provide originalBatchId and emails array.' },
+        { status: 400 }
+      );
+    }
+    // Validate original batch
+    const originalBatch = await prisma.batch.findUnique({
+      where: { id: originalBatchId },
+      include: { failedEmails: true },
+    });
+    if (!originalBatch || originalBatch.creatorId !== userId) {
+      return NextResponse.json({ error: 'Batch not found' }, { status: 404 });
+    }
+    // Verify all emails are technical failures
+    const failedEmailsMap = new Map(
+      originalBatch.failedEmails.map(f => [f.email, f])
+    );
+    for (const email of emails) {
+      const failedEmail = failedEmailsMap.get(email);
+      if (!failedEmail || failedEmail.category !== 'technical' || !failedEmail.canResend) {
+        return NextResponse.json(
+          { error: `Email ${email} cannot be resent (not a technical failure)` },
+          { status: 400 }
+        );
+      }
+    }
+    // Create new batch with resend flag
+    const newBatchName = `${originalBatch.name} - Resend`;
+    
+    const newBatch = await prisma.batch.create({
+      data: {
+        name: newBatchName,
+        creatorId: userId,
+        isResend: true,
+        originalBatchId: originalBatchId,
+        totalInCSV: emails.length,
+      },
+    });
+    return NextResponse.json({
+      message: 'Resend batch created successfully',
+      newBatchId: newBatch.id,
+      newBatchName: newBatchName,
+      emailsToResend: emails.length,
+    });
+  } catch (error) {
+    console.error('Error creating resend batch:', error);
+    return NextResponse.json(
+      { error: 'Failed to create resend batch' },
+      { status: 500 }
+    );
+  }
+}

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Navbar } from '../../components/Navbar';
 import { TokenManagement } from '../../components/TokenManagement';
 import { TokenTransactionHistory } from '@/app/components/TokenTransactionHistory';
+import UserManagement from '@/app/components/UserManagement';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -15,11 +16,11 @@ export default function Dashboard() {
       try {
         const response = await fetch('/api/me');
         const data = await response.json();
-        
-        if (!data.is_admin) {
-          router.push('/'); 
+
+        if (!data.user?.is_admin) {
+          router.push('/');
         }
-        
+
         setIsLoading(false);
       } catch (error) {
         console.error('Error checking admin status:', error);
@@ -37,18 +38,22 @@ export default function Dashboard() {
   }
 
   return (
-    
-     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">   
-       <div className="flex flex-col space-y-6">
+
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="flex flex-col space-y-6">
+        {/* User Management Section */}
+        <div>
+          <UserManagement />
+        </div>
         {/* Token Management Section */}
         <div>
           <TokenManagement />
         </div>
         {/* Transaction History Section */}
         <div>
-            <TokenTransactionHistory />
+          <TokenTransactionHistory />
         </div>
       </div>
-     </div>    
+    </div>
   );
 }

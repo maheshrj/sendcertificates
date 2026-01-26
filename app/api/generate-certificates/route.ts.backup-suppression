@@ -67,7 +67,7 @@ if (process.env.REDIS_URL) {
     emailQueue = new Queue('emailQueue', {
       connection,
       defaultJobOptions: {
-        attempts: 5, // Retry up to 5 times
+        attempts: 3,
         backoff: {
           type: 'exponential',
           delay: 1000,
@@ -135,6 +135,7 @@ if (connection && emailQueue) {
       }
 
       // Check suppression list
+      /*
       const suppressed = await prisma.suppressionList.findUnique({
         where: { email: email.toLowerCase() },
       });
@@ -144,13 +145,16 @@ if (connection && emailQueue) {
         // Don't throw error - just skip this email
         return;
       }
+      */
 
       // Check global SES rate limit
+      /*
       const sesRateLimitCheck = await checkSESRateLimit();
       if (!sesRateLimitCheck.allowed) {
         console.log(`Global SES rate limit exceeded: ${sesRateLimitCheck.reason}`);
         throw new Error(`SES rate limit exceeded: ${sesRateLimitCheck.reason}`);
       }
+       */
 
       try {
         // Get email config for support email
@@ -189,27 +193,10 @@ if (connection && emailQueue) {
         });
 
         await transporter.sendMail(mailOptions);
-        console.log(`✅ Email sent successfully to ${email} for batch ${batchId}`);
-      } catch (emailError: any) {
-        // Enhanced error logging with categorization
-        const { createErrorDetails, logError } = await import('@/app/lib/error-handler');
-
-        const errorDetails = createErrorDetails(emailError, {
-          email,
-          batchId,
-          additionalContext: {
-            userId,
-            emailFrom,
-            ccCount: ccEmails?.length || 0,
-            bccCount: bccEmails?.length || 0,
-            attemptNumber: job?.attemptsMade || 0
-          }
-        });
-
-        logError(errorDetails);
-
-        // Throw error to trigger BullMQ retry
-        throw new Error(`${errorDetails.category}: ${errorDetails.userMessage}`);
+        console.log(`Email sent to ${email} for user ${userId}`);
+      } catch (emailError) {
+        console.error(`Failed to send email to ${email}:`, emailError);
+        throw emailError; // triggers BullMQ retry
       }
     },
     {
@@ -223,42 +210,23 @@ if (connection && emailQueue) {
   );
 
   emailWorker.on('error', (err) => {
-    console.error('❌ [EMAIL_WORKER_ERROR]', {
-      error: err.message,
-      timestamp: new Date().toISOString()
-    });
+    console.error('Email worker error:', err);
   });
 
-  emailWorker.on('failed', async (job, err) => {
+  emailWorker.on('failed', (job, err) => {
     if (job) {
-      const { createErrorDetails, logError } = await import('@/app/lib/error-handler');
-
-      const errorDetails = createErrorDetails(err, {
-        email: job.data.email,
-        batchId: job.data.batchId,
-        additionalContext: {
-          jobId: job.id,
-          attemptsMade: job.attemptsMade,
-          maxAttempts: job.opts.attempts,
-          finalAttempt: job.attemptsMade >= (job.opts.attempts || 3)
-        }
-      });
-
-      logError(errorDetails);
-
-      if (job.attemptsMade >= (job.opts.attempts || 3)) {
-        console.error(`❌ [EMAIL_FINAL_FAILURE] Job ${job.id} failed permanently after ${job.attemptsMade} attempts`);
-      } else {
-        console.log(`⚠️  [EMAIL_RETRY] Job ${job.id} will retry (attempt ${job.attemptsMade}/${job.opts.attempts})`);
-      }
+      console.error(`Email job ${job.id} failed with error:`, err);
+      console.log(`Attempt ${job.attemptsMade} of ${job.opts.attempts}`);
     } else {
-      console.error('❌ [EMAIL_JOB_FAILED] Job details unavailable:', err);
+      console.error('An email job failed but job details are unavailable:', err);
     }
   });
 
   emailWorker.on('completed', (job) => {
     if (job) {
-      console.log(`✅ [EMAIL_SUCCESS] Job ${job.id} completed for ${job.data.email}`);
+      console.log(`Email job ${job.id} completed successfully`);
+    } else {
+      console.log('An email job completed but job details are unavailable');
     }
   });
 }
@@ -490,8 +458,10 @@ async function prepareEmailData(
   const nameKey = Object.keys(record).find((k) => k.toLowerCase() === 'name');
   const recipientName = nameKey ? record[nameKey].trim() : '';
 
-  // Use subject as-is (user can add variables like ~Name~ themselves)
-  const personalizedSubject = emailSubject;
+  // Personalize subject line
+  const personalizedSubject = recipientName
+    ? `${emailSubject}, ${recipientName}!`
+    : emailSubject;
 
   // Generate unsubscribe URL
   const unsubscribeUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/api/unsubscribe?email=${encodeURIComponent(emailAddress)}`;
@@ -541,34 +511,33 @@ Unsubscribe from certificate emails: ${unsubscribeUrl}
       : ''
     }
           <h2 style="color: #333; text-align: center; margin-bottom: 20px;">${emailHeading}</h2>
-          <p style="color: #555; font-size: 16px; text-align: center;">${emailMessage}</p>
+          ${recipientName ? `<p style="color: #555; font-size: 16px;">Dear ${recipientName},</p>` : ''}
+          <p style="color: #555; font-size: 16px;">${emailMessage}</p>
           
-          <!-- Download Button -->
+          <!-- Prominent Download Button -->
           <div style="text-align: center; margin: 30px 0;">
             <a href="${certificateUrl}" style="display: inline-block; background-color: #007BFF; color: #ffffff; text-decoration: none; padding: 14px 30px; border-radius: 5px; font-size: 16px; font-weight: bold;">
-              Download Certificate
+              📥 Download Your Certificate
             </a>
           </div>
+          
+          <!-- Alternative text link -->
+          <p style="text-align: center; font-size: 14px; color: #666;">
+            Or copy this link: <a href="${certificateUrl}" style="color: #007BFF; word-break: break-all;">${certificateUrl}</a>
+          </p>
           
           ${validationUrl ? `
           <!-- Certificate Validation -->
           <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
             <p style="margin: 0; font-size: 14px; color: #555;">
-              <strong>Verify this certificate:</strong><br>
+              🔒 <strong>Verify this certificate:</strong><br>
               <a href="${validationUrl}" style="color: #007BFF; text-decoration: none;">${validationUrl}</a>
             </p>
           </div>
           ` : ''}
           
-          <!-- Certificate Link (AWS SES Compliance) -->
-          <div style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #e0e0e0;">
-            <p style="font-size: 10px; color: #bbb; text-align: center; margin: 5px 0;">
-              <a href="${certificateUrl}" style="color: #999; word-break: break-all; text-decoration: none;">${certificateUrl}</a>
-            </p>
-          </div>
-          
           <!-- Professional Footer -->
-          <footer style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; font-size: 12px; color: #777;">
+          <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; font-size: 12px; color: #777;">
             <p style="margin: 5px 0;">This certificate was sent by <strong>${emailConfig?.customDomain || 'SendCertificates'}</strong></p>
             <p style="margin: 5px 0;">
               Questions? Contact us at 
@@ -577,12 +546,12 @@ Unsubscribe from certificate emails: ${unsubscribeUrl}
               </a>
             </p>
             <p style="margin: 15px 0 5px 0;">
-              <a href="${unsubscribeUrl}" style="color: #007BFF; text-decoration: none; font-size: 12px;">
-                Unsubscribe
+              <a href="${unsubscribeUrl}" style="color: #999; text-decoration: underline; font-size: 11px;">
+                Unsubscribe from certificate emails
               </a>
             </p>
             <p style="margin: 10px 0; font-size: 11px; color: #999;">
-              This is an automated message. Please do not reply to this email.
+              📧 This is an automated message. Please do not reply to this email.
             </p>
           </footer>
         </div>

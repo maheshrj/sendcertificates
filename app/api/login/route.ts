@@ -14,8 +14,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
 
+    // Check if email is verified
+    if (!user.emailVerified) {
+      return NextResponse.json({
+        error: 'Please verify your email before logging in. Check your inbox for the verification link.'
+      }, { status: 403 });
+    }
+
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
-    const response = NextResponse.json({ 
+    const response = NextResponse.json({
       message: 'Login successful',
       is_admin: user.is_admin,
       user: {

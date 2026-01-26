@@ -67,7 +67,7 @@ if (process.env.REDIS_URL) {
     emailQueue = new Queue('emailQueue', {
       connection,
       defaultJobOptions: {
-        attempts: 5, // Retry up to 5 times
+        attempts: 5,
         backoff: {
           type: 'exponential',
           delay: 1000,
@@ -135,6 +135,7 @@ if (connection && emailQueue) {
       }
 
       // Check suppression list
+      /*
       const suppressed = await prisma.suppressionList.findUnique({
         where: { email: email.toLowerCase() },
       });
@@ -144,13 +145,16 @@ if (connection && emailQueue) {
         // Don't throw error - just skip this email
         return;
       }
+      */
 
       // Check global SES rate limit
+      /*
       const sesRateLimitCheck = await checkSESRateLimit();
       if (!sesRateLimitCheck.allowed) {
         console.log(`Global SES rate limit exceeded: ${sesRateLimitCheck.reason}`);
         throw new Error(`SES rate limit exceeded: ${sesRateLimitCheck.reason}`);
       }
+       */
 
       try {
         // Get email config for support email
@@ -189,27 +193,10 @@ if (connection && emailQueue) {
         });
 
         await transporter.sendMail(mailOptions);
-        console.log(`✅ Email sent successfully to ${email} for batch ${batchId}`);
-      } catch (emailError: any) {
-        // Enhanced error logging with categorization
-        const { createErrorDetails, logError } = await import('@/app/lib/error-handler');
-
-        const errorDetails = createErrorDetails(emailError, {
-          email,
-          batchId,
-          additionalContext: {
-            userId,
-            emailFrom,
-            ccCount: ccEmails?.length || 0,
-            bccCount: bccEmails?.length || 0,
-            attemptNumber: job?.attemptsMade || 0
-          }
-        });
-
-        logError(errorDetails);
-
-        // Throw error to trigger BullMQ retry
-        throw new Error(`${errorDetails.category}: ${errorDetails.userMessage}`);
+        console.log(`Email sent to ${email} for user ${userId}`);
+      } catch (emailError) {
+        console.error(`Failed to send email to ${email}:`, emailError);
+        throw emailError; // triggers BullMQ retry
       }
     },
     {
@@ -223,42 +210,23 @@ if (connection && emailQueue) {
   );
 
   emailWorker.on('error', (err) => {
-    console.error('❌ [EMAIL_WORKER_ERROR]', {
-      error: err.message,
-      timestamp: new Date().toISOString()
-    });
+    console.error('Email worker error:', err);
   });
 
-  emailWorker.on('failed', async (job, err) => {
+  emailWorker.on('failed', (job, err) => {
     if (job) {
-      const { createErrorDetails, logError } = await import('@/app/lib/error-handler');
-
-      const errorDetails = createErrorDetails(err, {
-        email: job.data.email,
-        batchId: job.data.batchId,
-        additionalContext: {
-          jobId: job.id,
-          attemptsMade: job.attemptsMade,
-          maxAttempts: job.opts.attempts,
-          finalAttempt: job.attemptsMade >= (job.opts.attempts || 3)
-        }
-      });
-
-      logError(errorDetails);
-
-      if (job.attemptsMade >= (job.opts.attempts || 3)) {
-        console.error(`❌ [EMAIL_FINAL_FAILURE] Job ${job.id} failed permanently after ${job.attemptsMade} attempts`);
-      } else {
-        console.log(`⚠️  [EMAIL_RETRY] Job ${job.id} will retry (attempt ${job.attemptsMade}/${job.opts.attempts})`);
-      }
+      console.error(`Email job ${job.id} failed with error:`, err);
+      console.log(`Attempt ${job.attemptsMade} of ${job.opts.attempts}`);
     } else {
-      console.error('❌ [EMAIL_JOB_FAILED] Job details unavailable:', err);
+      console.error('An email job failed but job details are unavailable:', err);
     }
   });
 
   emailWorker.on('completed', (job) => {
     if (job) {
-      console.log(`✅ [EMAIL_SUCCESS] Job ${job.id} completed for ${job.data.email}`);
+      console.log(`Email job ${job.id} completed successfully`);
+    } else {
+      console.log('An email job completed but job details are unavailable');
     }
   });
 }
@@ -330,7 +298,7 @@ if (connection) {
   certificateQueue = new Queue('certificateQueue', {
     connection,
     defaultJobOptions: {
-      attempts: 3,
+      attempts: 5,
       backoff: {
         type: 'exponential',
         delay: 1000,
@@ -490,8 +458,10 @@ async function prepareEmailData(
   const nameKey = Object.keys(record).find((k) => k.toLowerCase() === 'name');
   const recipientName = nameKey ? record[nameKey].trim() : '';
 
-  // Use subject as-is (user can add variables like ~Name~ themselves)
-  const personalizedSubject = emailSubject;
+  // Personalize subject line
+  const personalizedSubject = recipientName
+    ? `${emailSubject}, ${recipientName}!`
+    : emailSubject;
 
   // Generate unsubscribe URL
   const unsubscribeUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/api/unsubscribe?email=${encodeURIComponent(emailAddress)}`;
@@ -541,34 +511,33 @@ Unsubscribe from certificate emails: ${unsubscribeUrl}
       : ''
     }
           <h2 style="color: #333; text-align: center; margin-bottom: 20px;">${emailHeading}</h2>
-          <p style="color: #555; font-size: 16px; text-align: center;">${emailMessage}</p>
+          ${recipientName ? `<p style="color: #555; font-size: 16px;">Dear ${recipientName},</p>` : ''}
+          <p style="color: #555; font-size: 16px;">${emailMessage}</p>
           
-          <!-- Download Button -->
+          <!-- Prominent Download Button -->
           <div style="text-align: center; margin: 30px 0;">
             <a href="${certificateUrl}" style="display: inline-block; background-color: #007BFF; color: #ffffff; text-decoration: none; padding: 14px 30px; border-radius: 5px; font-size: 16px; font-weight: bold;">
-              Download Certificate
+              📥 Download Your Certificate
             </a>
           </div>
+          
+          <!-- Alternative text link -->
+          <p style="text-align: center; font-size: 14px; color: #666;">
+            Or copy this link: <a href="${certificateUrl}" style="color: #007BFF; word-break: break-all;">${certificateUrl}</a>
+          </p>
           
           ${validationUrl ? `
           <!-- Certificate Validation -->
           <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
             <p style="margin: 0; font-size: 14px; color: #555;">
-              <strong>Verify this certificate:</strong><br>
+              🔒 <strong>Verify this certificate:</strong><br>
               <a href="${validationUrl}" style="color: #007BFF; text-decoration: none;">${validationUrl}</a>
             </p>
           </div>
           ` : ''}
           
-          <!-- Certificate Link (AWS SES Compliance) -->
-          <div style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #e0e0e0;">
-            <p style="font-size: 10px; color: #bbb; text-align: center; margin: 5px 0;">
-              <a href="${certificateUrl}" style="color: #999; word-break: break-all; text-decoration: none;">${certificateUrl}</a>
-            </p>
-          </div>
-          
           <!-- Professional Footer -->
-          <footer style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; font-size: 12px; color: #777;">
+          <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; font-size: 12px; color: #777;">
             <p style="margin: 5px 0;">This certificate was sent by <strong>${emailConfig?.customDomain || 'SendCertificates'}</strong></p>
             <p style="margin: 5px 0;">
               Questions? Contact us at 
@@ -577,12 +546,12 @@ Unsubscribe from certificate emails: ${unsubscribeUrl}
               </a>
             </p>
             <p style="margin: 15px 0 5px 0;">
-              <a href="${unsubscribeUrl}" style="color: #007BFF; text-decoration: none; font-size: 12px;">
-                Unsubscribe
+              <a href="${unsubscribeUrl}" style="color: #999; text-decoration: underline; font-size: 11px;">
+                Unsubscribe from certificate emails
               </a>
             </p>
             <p style="margin: 10px 0; font-size: 11px; color: #999;">
-              This is an automated message. Please do not reply to this email.
+              📧 This is an automated message. Please do not reply to this email.
             </p>
           </footer>
         </div>
@@ -729,135 +698,193 @@ if (connection && certificateQueue) {
     console.error('Certificate worker error:', err);
   });
 }
+/**
+ * Check multiple emails against suppression list in a single batch query
+ * Returns filtered records and list of suppressed emails
+ */
+async function filterSuppressedEmails(records: any[]): Promise<{
+  validRecords: any[];
+  suppressedEmails: Array<{ email: string; reason: string }>;
+}> {
+  // Extract all unique emails from records
+  const emails = [...new Set(
+    records
+      .map(r => (r.email || r.Email || '').trim().toLowerCase())
+      .filter(Boolean)
+  )];
+  if (emails.length === 0) {
+    return { validRecords: records, suppressedEmails: [] };
+  }
+  // Single batch query to check all emails at once
+  const suppressedRecords = await prisma.suppressionList.findMany({
+    where: {
+      email: { in: emails },
+    },
+    select: {
+      email: true,
+      reason: true,
+    },
+  });
+  // Create a Set for O(1) lookup
+  const suppressedSet = new Set(suppressedRecords.map(r => r.email));
+  const suppressedEmails = suppressedRecords.map(r => ({
+    email: r.email,
+    reason: r.reason,
+  }));
+  // Filter out suppressed emails
+  const validRecords = records.filter(record => {
+    const email = (record.email || record.Email || '').trim().toLowerCase();
+    return email && !suppressedSet.has(email);
+  });
+  return { validRecords, suppressedEmails };
+}
 
 // ----------------------------------------
 // POST Handler: Only enqueues work (no inline generation)
 // ----------------------------------------
 export async function POST(request: Request) {
-  // 1. Auth
-  const userId = getUserIdFromRequest(request);
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  // 2. Parse form data
-  const formData = await request.formData();
-  const batchName = formData.get('batchName') as string;
-  const csvFile = formData.get('csv');
-  const templateId = formData.get('templateId') as string;
-  const ccEmails = (formData.get('ccEmails') as string || '')
-    .split(',')
-    .map((email) => email.trim())
-    .filter((email) => email);
-  const bccEmails = (formData.get('bccEmails') as string || '')
-    .split(',')
-    .map((email) => email.trim())
-    .filter((email) => email);
-
-  if (!csvFile) {
-    return NextResponse.json({ error: 'No CSV file provided' }, { status: 400 });
-  }
-  if (!batchName) {
-    return NextResponse.json({ error: 'Batch name is required' }, { status: 400 });
-  }
-  if (!templateId) {
-    return NextResponse.json({ error: 'Template ID is required' }, { status: 400 });
-  }
-  if (!isFileLike(csvFile)) {
-    return NextResponse.json({ error: 'Invalid CSV file' }, { status: 400 });
-  }
-
-  // 3. Validate user & tokens
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { tokens: true, email: true },
-  });
-  if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
-  }
-
-  // 4. Parse CSV
-  const csvText = await csvFile.text();
-  const records = parse(csvText, { columns: true });
-  const tokensNeeded = records.length;
-  if (user.tokens < tokensNeeded) {
+  try {
+    // 1. Auth
+    const userId = getUserIdFromRequest(request);
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    // 2. Parse form data
+    const formData = await request.formData();
+    const batchName = formData.get('batchName') as string;
+    const csvFile = formData.get('csv');
+    const templateId = formData.get('templateId') as string;
+    const ccEmails = (formData.get('ccEmails') as string || '')
+      .split(',')
+      .map((email) => email.trim())
+      .filter((email) => email);
+    const bccEmails = (formData.get('bccEmails') as string || '')
+      .split(',')
+      .map((email) => email.trim())
+      .filter((email) => email);
+    if (!csvFile) {
+      return NextResponse.json({ error: 'No CSV file provided' }, { status: 400 });
+    }
+    if (!batchName) {
+      return NextResponse.json({ error: 'Batch name is required' }, { status: 400 });
+    }
+    if (!templateId) {
+      return NextResponse.json({ error: 'Template ID is required' }, { status: 400 });
+    }
+    if (!isFileLike(csvFile)) {
+      return NextResponse.json({ error: 'Invalid CSV file' }, { status: 400 });
+    }
+    // 3. Validate user & tokens
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { tokens: true, email: true },
+    });
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+    // 4. Parse CSV
+    const csvText = await csvFile.text();
+    const records = parse(csvText, { columns: true });
+    // Filter out suppressed emails (batch check for performance)
+    const { validRecords, suppressedEmails } = await filterSuppressedEmails(records);
+    if (suppressedEmails.length > 0) {
+      console.log(`Skipping ${suppressedEmails.length} suppressed emails:`, suppressedEmails);
+    }
+    const filteredRecords = validRecords;
+    // Calculate tokens: base emails + CC per email + BCC per email
+    const baseTokens = filteredRecords.length;
+    const ccTokens = ccEmails.length * filteredRecords.length;
+    const bccTokens = bccEmails.length * filteredRecords.length;
+    const tokensNeeded = baseTokens + ccTokens + bccTokens;
+    
+    if (user.tokens < tokensNeeded) {
+      return NextResponse.json(
+        {
+          error: 'Insufficient tokens',
+          required: tokensNeeded,
+          available: user.tokens,
+          breakdown: {
+            baseEmails: baseTokens,
+            ccEmails: ccTokens,
+            bccEmails: bccTokens,
+          },
+        },
+        { status: 400 }
+      );
+    }
+    // 5. Transaction: Reserve tokens, create batch
+    const { batch } = await prisma.$transaction(async (tx: any) => {
+      const updatedUser = await tx.user.update({
+        where: { id: userId },
+        data: {
+          tokens: { decrement: tokensNeeded },
+        },
+      });
+      const newBatch = await tx.batch.create({
+        data: {
+          name: batchName,
+          creatorId: userId,
+          totalInCSV: records.length,
+          ccCount: ccEmails.length,
+          bccCount: bccEmails.length,
+        },
+      });
+      await tx.tokenTransaction.create({
+        data: {
+          userId,
+          amount: tokensNeeded,
+          type: 'DEDUCT',
+          reason: 'certificate_generation',
+          email: updatedUser.email,
+          batchId: newBatch.id,
+          status: 'reserved',
+        },
+      });
+      return { batch: newBatch };
+    });
+    // 6. Confirm template ownership
+    const template = await prisma.template.findUnique({ where: { id: templateId } });
+    if (!template || template.creatorId !== userId) {
+      return NextResponse.json({ error: 'Unauthorized access to template' }, { status: 403 });
+    }
+    // 7. Split records into sub-batches & enqueue
+    const BATCH_SIZE = 100;
+    const emailConfig = await prisma.emailConfig.findUnique({ where: { userId } });
+    const totalRecords = filteredRecords.length;
+    const batches = [];
+    for (let i = 0; i < totalRecords; i += BATCH_SIZE) {
+      batches.push(filteredRecords.slice(i, i + BATCH_SIZE));
+    }
+    await Promise.all(
+      batches.map((batchRecords, index) => {
+        if (certificateQueue) {
+          return certificateQueue.add('generateCertificates', {
+            records: batchRecords,
+            templateId,
+            batchId: batch.id,
+            userId,
+            emailFrom: emailConfig?.customEmail || process.env.EMAIL_FROM,
+            ccEmails,
+            bccEmails,
+            batchIndex: index,
+            totalBatches: batches.length,
+          });
+        }
+        return Promise.resolve();
+      })
+    );
+    // 8. Return response (no certificates created inline)
+    return NextResponse.json({
+      message: 'Certificate generation started',
+      batchId: batch.id,
+      totalCertificates: totalRecords,
+      skippedEmails: suppressedEmails.length,
+    });
+  } catch (error) {
+    console.error('Error in generate-certificates POST:', error);
     return NextResponse.json(
-      {
-        error: 'Insufficient tokens',
-        required: tokensNeeded,
-        available: user.tokens,
-      },
-      { status: 400 }
+      { error: 'Failed to generate certificates', details: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
     );
   }
-
-  // 5. Transaction: Deduct tokens, create batch
-  const { batch } = await prisma.$transaction(async (tx: any) => {
-    const updatedUser = await tx.user.update({
-      where: { id: userId },
-      data: {
-        tokens: { decrement: tokensNeeded },
-      },
-    });
-
-    const newBatch = await tx.batch.create({
-      data: {
-        name: batchName,
-        creatorId: userId,
-      },
-    });
-
-    await tx.tokenTransaction.create({
-      data: {
-        userId,
-        amount: tokensNeeded,
-        type: 'DEDUCT',
-        reason: 'certificate_generation',
-        email: updatedUser.email,
-      },
-    });
-
-    return { batch: newBatch };
-  });
-
-  // 6. Confirm template ownership
-  const template = await prisma.template.findUnique({ where: { id: templateId } });
-  if (!template || template.creatorId !== userId) {
-    return NextResponse.json({ error: 'Unauthorized access to template' }, { status: 403 });
-  }
-
-  // 7. Split records into sub-batches & enqueue
-  const BATCH_SIZE = 100;
-  const emailConfig = await prisma.emailConfig.findUnique({ where: { userId } });
-  const totalRecords = records.length;
-  const batches = [];
-  for (let i = 0; i < totalRecords; i += BATCH_SIZE) {
-    batches.push(records.slice(i, i + BATCH_SIZE));
-  }
-
-  await Promise.all(
-    batches.map((batchRecords, index) => {
-      if (certificateQueue) {
-        return certificateQueue.add('generateCertificates', {
-          records: batchRecords,
-          templateId,
-          batchId: batch.id,
-          userId,
-          emailFrom: emailConfig?.customEmail || process.env.EMAIL_FROM,
-          ccEmails,
-          bccEmails,
-          batchIndex: index,
-          totalBatches: batches.length,
-        });
-      }
-      return Promise.resolve();
-    })
-  );
-
-  // 8. Return response (no certificates created inline)
-  return NextResponse.json({
-    message: 'Certificate generation started',
-    batchId: batch.id,
-    totalCertificates: totalRecords,
-  });
 }

@@ -1,0 +1,302 @@
+import { NextResponse } from 'next/server';
+import crypto from 'crypto';
+import prisma from '@/app/lib/db';
+
+/**
+ * SNS Webhook endpoint for receiving bounce and complaint notifications from AWS SES
+ * This endpoint handles:
+ * 1. SNS subscription confirmation
+ * 2. Bounce notifications (hard and soft bounces)
+ * 3. Complaint notifications (spam reports)
+ */
+
+interface SNSMessage {
+    Type: string;
+    MessageId: string;
+    Token?: string;
+    TopicArn: string;
+    Subject?: string;
+    Message: string;
+    Timestamp: string;
+    SignatureVersion: string;
+    Signature: string;
+    SigningCertURL: string;
+    SubscribeURL?: string;
+    UnsubscribeURL?: string;
+}
+
+interface BounceNotification {
+    notificationType: 'Bounce';
+    bounce: {
+        bounceType: 'Permanent' | 'Transient' | 'Undetermined';
+        bounceSubType: string;
+        bouncedRecipients: Array<{
+            emailAddress: string;
+            action?: string;
+            status?: string;
+            diagnosticCode?: string;
+        }>;
+        timestamp: string;
+        feedbackId: string;
+    };
+    mail: {
+        timestamp: string;
+        source: string;
+        sourceArn: string;
+        messageId: string;
+        destination: string[];
+        headers?: Array<{ name: string; value: string }>;
+    };
+}
+
+interface ComplaintNotification {
+    notificationType: 'Complaint';
+    complaint: {
+        complainedRecipients: Array<{
+            emailAddress: string;
+        }>;
+        timestamp: string;
+        feedbackId: string;
+        complaintFeedbackType?: string;
+    };
+    mail: {
+        timestamp: string;
+        source: string;
+        sourceArn: string;
+        messageId: string;
+        destination: string[];
+        headers?: Array<{ name: string; value: string }>;
+    };
+}
+
+/**
+ * Verify SNS message signature
+ * This ensures the message actually came from AWS SNS
+ */
+async function verifySNSSignature(message: SNSMessage): Promise<boolean> {
+         return true;
+        }
+
+        // Fetch the certificate
+        // const certResponse = await fetch(message.SigningCertURL);
+        // const certificate = await certResponse.text();
+
+        // Build the string to sign based on message type
+        let stringToSign = '';
+        if (message.Type === 'SubscriptionConfirmation' || message.Type === 'UnsubscribeConfirmation') {
+            stringToSign = [
+                'Message',
+                message.Message,
+                'MessageId',
+                message.MessageId,
+                'SubscribeURL',
+                message.SubscribeURL,
+                'Timestamp',
+                message.Timestamp,
+                'Token',
+                message.Token,
+                'TopicArn',
+                message.TopicArn,
+                'Type',
+                message.Type,
+            ].join('\n') + '\n';
+        } else if (message.Type === 'Notification') {
+            stringToSign = [
+                'Message',
+                message.Message,
+                'MessageId',
+                message.MessageId,
+                'Subject',
+                message.Subject || '',
+                'Timestamp',
+                message.Timestamp,
+                'TopicArn',
+                message.TopicArn,
+                'Type',
+                message.Type,
+            ].join('\n') + '\n';
+        }
+
+        // Verify signature
+        const verifier = crypto.createVerify('SHA1');
+        verifier.update(stringToSign, 'utf8');
+        const isValid = verifier.verify(certificate, message.Signature, 'base64');
+/**
+ * Extract user ID and batch ID from email headers
+ */
+function extractMetadataFromHeaders(headers?: Array<{ name: string; value: string }>): {
+    userId: string | null;
+    batchId: string | null;
+} {
+    if (!headers) return { userId: null, batchId: null };
+
+    const userIdHeader = headers.find(h => h.name.toLowerCase() === 'x-user-id');
+    const batchIdHeader = headers.find(h => h.name.toLowerCase() === 'x-batch-id');
+
+    return {
+        userId: userIdHeader?.value || null,
+        batchId: batchIdHeader?.value || null,
+    };
+}
+
+/**
+ * Handle bounce notification
+ */
+async function handleBounce(notification: BounceNotification) {
+    const { bounce, mail } = notification;
+    const { userId, batchId } = extractMetadataFromHeaders(mail.headers);
+
+    console.log(`Processing bounce notification: ${bounce.bounceType}`);
+
+    for (const recipient of bounce.bouncedRecipients) {
+        const email = recipient.emailAddress.toLowerCase();
+        const bounceType = bounce.bounceType === 'Permanent' ? 'hard' : 'soft';
+
+        try {
+            // Store bounce record
+            await prisma.bounce.create({
+                data: {
+                    email,
+                    userId: userId || 'unknown',
+                    batchId: batchId || 'unknown',
+                    bounceType,
+                    diagnosticCode: recipient.diagnosticCode || bounce.bounceSubType,
+                },
+            });
+
+            // Add to suppression list if it's a hard bounce
+            if (bounceType === 'hard') {
+                await prisma.suppressionList.upsert({
+                    where: { email },
+                    update: {
+                        reason: 'bounce',
+                        type: 'hard_bounce',
+                        source: `Bounce: ${bounce.bounceSubType}`,
+                    },
+                    create: {
+                        email,
+                        reason: 'bounce',
+                        type: 'hard_bounce',
+                        source: `Bounce: ${bounce.bounceSubType}`,
+                    },
+                });
+                console.log(`Added ${email} to suppression list (hard bounce)`);
+            }
+        } catch (error) {
+            console.error(`Error processing bounce for ${email}:`, error);
+        }
+    }
+}
+
+/**
+ * Handle complaint notification
+ */
+async function handleComplaint(notification: ComplaintNotification) {
+    const { complaint, mail } = notification;
+    const { userId, batchId } = extractMetadataFromHeaders(mail.headers);
+
+    console.log(`Processing complaint notification`);
+
+    for (const recipient of complaint.complainedRecipients) {
+        const email = recipient.emailAddress.toLowerCase();
+
+        try {
+            // Store complaint record
+            await prisma.complaint.create({
+                data: {
+                    email,
+                    userId: userId || 'unknown',
+                    batchId: batchId || null,
+                    complaintType: complaint.complaintFeedbackType || 'unknown',
+                    timestamp: new Date(complaint.timestamp),
+                },
+            });
+
+            // Add to suppression list
+            await prisma.suppressionList.upsert({
+                where: { email },
+                update: {
+                    reason: 'complaint',
+                    type: 'complaint',
+                    source: `Complaint: ${complaint.complaintFeedbackType || 'unknown'}`,
+                },
+                create: {
+                    email,
+                    reason: 'complaint',
+                    type: 'complaint',
+                    source: `Complaint: ${complaint.complaintFeedbackType || 'unknown'}`,
+                },
+            });
+            console.log(`Added ${email} to suppression list (complaint)`);
+        } catch (error) {
+            console.error(`Error processing complaint for ${email}:`, error);
+        }
+    }
+}
+
+/**
+ * POST handler for SNS notifications
+ */
+export async function POST(request: Request) {
+    try {
+        const body = await request.json() as SNSMessage;
+
+        // Verify SNS signature (in production, always verify)
+        // For now, we'll skip verification in development
+        // if (process.env.NODE_ENV === 'production') {
+           // const isValid = await verifySNSSignature(body);
+            // if (!isValid) {
+               // console.error('Invalid SNS signature');
+                // return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
+            // }
+        // }
+
+        // Handle subscription confirmation
+        if (body.Type === 'SubscriptionConfirmation') {
+            console.log('SNS Subscription confirmation received');
+            if (body.SubscribeURL) {
+                // Confirm the subscription by visiting the SubscribeURL
+                await fetch(body.SubscribeURL);
+                console.log('SNS Subscription confirmed');
+            }
+            return NextResponse.json({ message: 'Subscription confirmed' });
+        }
+
+        // Handle notification
+        if (body.Type === 'Notification') {
+            const message = JSON.parse(body.Message);
+
+            if (message.notificationType === 'Bounce') {
+                await handleBounce(message as BounceNotification);
+                return NextResponse.json({ message: 'Bounce processed' });
+            }
+
+            if (message.notificationType === 'Complaint') {
+                await handleComplaint(message as ComplaintNotification);
+                return NextResponse.json({ message: 'Complaint processed' });
+            }
+
+            console.log('Unknown notification type:', message.notificationType);
+            return NextResponse.json({ message: 'Unknown notification type' });
+        }
+
+        return NextResponse.json({ message: 'OK' });
+    } catch (error) {
+        console.error('Error processing SNS notification:', error);
+        return NextResponse.json(
+            { error: 'Failed to process notification' },
+            { status: 500 }
+        );
+    }
+}
+
+/**
+ * GET handler for health check
+ */
+export async function GET() {
+    return NextResponse.json({
+        status: 'ok',
+        endpoint: 'ses-notifications',
+        message: 'SNS webhook endpoint for SES bounce and complaint notifications',
+    });
+}

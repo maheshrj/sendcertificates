@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "emailRateLimit" INTEGER NOT NULL DEFAULT 10,
+ADD COLUMN     "emailDailyLimit" INTEGER NOT NULL DEFAULT 10000;
