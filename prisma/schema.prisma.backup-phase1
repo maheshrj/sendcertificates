@@ -1,0 +1,215 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+model FailedCertificate {
+  id        String   @id @default(cuid())
+  batchId   String
+  data      Json
+  error     String
+  createdAt DateTime @default(now())
+  batch     Batch    @relation(fields: [batchId], references: [id])
+}
+// NEW: Track failed emails with detailed error information
+model FailedEmail {
+  id            String   @id @default(cuid())
+  batchId       String
+  batch         Batch    @relation(fields: [batchId], references: [id])
+  email         String
+  reason        String   // "network_error", "s3_timeout", "bounce", "complaint", "unsubscribe"
+  category      String   // "technical" or "compliance"
+  retryCount    Int      @default(0)
+  canResend     Boolean  @default(false)
+  errorDetails  String?  @db.Text // JSON string with full error
+  createdAt     DateTime @default(now())
+  
+  @@index([batchId])
+  @@index([category])
+  @@index([email])
+}
+model Batch {
+  id                      String              @id @default(cuid())
+  name                    String
+  creatorId               String
+  progress                Int                 @default(0)
+  
+  // NEW: Analytics fields
+  ccCount                 Int                 @default(0)
+  bccCount                Int                 @default(0)
+  totalInCSV              Int                 @default(0)
+  totalSent               Int                 @default(0)
+  totalFailed             Int                 @default(0)
+  analysisStatus          String              @default("in_progress") // "in_progress", "completed"
+  estimatedCompletionTime DateTime?
+  
+  // NEW: Resend tracking
+  isResend                Boolean             @default(false)
+  originalBatchId         String?
+  
+  failedCertificates      FailedCertificate[]
+  failedEmails            FailedEmail[]       // NEW
+  creator                 User                @relation(fields: [creatorId], references: [id])
+  certificates            Certificate[]
+  invalidEmails           InvalidEmail[]
+  tokenTransactions       TokenTransaction[]  // NEW: Reverse relation
+  createdAt               DateTime            @default(now())
+  @@index([creatorId])
+  @@index([creatorId, createdAt(sort: Desc)])
+  @@index([analysisStatus])
+}
+model TokenTransaction {
+  id           String   @id @default(cuid())
+  userId       String
+  amount       Int
+  type         String
+  reason       String
+  email        String
+  
+  // NEW: Batch tracking and refund support
+  batchId      String?
+  batch        Batch?   @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  refundReason String?
+  status       String   @default("completed") // "reserved", "completed", "refunded"
+  
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id])
+  
+  @@index([batchId])
+  @@index([status])
+  @@index([userId, createdAt(sort: Desc)])
+}
+model User {
+  id                      String             @id @default(cuid())
+  name                    String
+  email                   String             @unique
+  password                String?
+  organization            String?
+  phone                   String?
+  emailVerified           Boolean            @default(false)
+  verificationToken       String?
+  verificationTokenExpiry DateTime?
+  resetToken              String?
+  resetTokenExpiry        DateTime?
+  templates               Template[]
+  certificates            Certificate[]
+  batches                 Batch[]
+  transactions            TokenTransaction[]
+  emailConfig             EmailConfig?
+  tokens                  Int                @default(100)
+  is_admin                Boolean            @default(false)
+  is_api_enabled          Boolean            @default(false)
+  apiKeys                 ApiKey[]
+  emailRateLimit          Int                @default(10)
+  emailDailyLimit         Int                @default(10000)
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+}
+model Template {
+  id             String        @id @default(cuid())
+  name           String
+  imageUrl       String
+  width          Int
+  height         Int
+  placeholders   Json
+  signatures     Json
+  qrPlaceholders Json?
+  creatorId      String
+  creator        User          @relation(fields: [creatorId], references: [id])
+  certificates   Certificate[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+model InvalidEmail {
+  id        String   @id @default(cuid())
+  email     String
+  batchId   String
+  batch     Batch    @relation(fields: [batchId], references: [id])
+  reason    String
+  createdAt DateTime @default(now())
+}
+model Certificate {
+  id                String    @id @default(cuid())
+  templateId        String?
+  template          Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  batchId           String?
+  batch             Batch?    @relation(fields: [batchId], references: [id])
+  uniqueIdentifier  String    @unique
+  data              Json
+  generatedImageUrl String
+  creatorId         String
+  creator           User      @relation(fields: [creatorId], references: [id])
+  
+  // NEW: Status tracking
+  status            String    @default("success") // "pending", "success", "failed", "retrying"
+  failureReason     String?   @db.Text
+  retryCount        Int       @default(0)
+  
+  createdAt         DateTime  @default(now())
+  @@index([batchId])
+  @@index([creatorId])
+  @@index([status])
+}
+model EmailConfig {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  defaultSubject String   @default("Your Certificate")
+  defaultMessage String   @default("Please find your certificate attached.")
+  logoUrl        String?
+  emailHeading   String   @default("Congratulations on receiving your certificate!")
+  supportEmail   String?  @default("support@example.com")
+  user           User     @relation(fields: [userId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  customDomain   String?
+  customEmail    String?
+  isVerified     Boolean  @default(false)
+  dkimRecords    Json?
+}
+model ApiKey {
+  id        String    @id @default(cuid())
+  name      String
+  key       String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  lastUsed  DateTime?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+  isActive  Boolean   @default(true)
+}
+model Bounce {
+  id             String   @id @default(cuid())
+  email          String
+  userId         String
+  batchId        String
+  bounceType     String?
+  diagnosticCode String?  @db.Text
+  createdAt      DateTime @default(now())
+  @@index([email])
+  @@index([userId])
+  @@index([batchId])
+}
+model Complaint {
+  id            String   @id @default(cuid())
+  email         String
+  userId        String
+  batchId       String?
+  complaintType String?
+  timestamp     DateTime
+  createdAt     DateTime @default(now())
+  @@index([email])
+  @@index([userId])
+  @@index([batchId])
+}
+model SuppressionList {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  reason    String
+  type      String
+  source    String?
+  createdAt DateTime @default(now())
+  @@index([email])
+  @@index([reason])
+}
