@@ -26,9 +26,4 @@ Sentry.init({
 
         return event;
     },
-
-    // Integrations
-    integrations: [
-        new Sentry.Integrations.Http({ tracing: true }),
-    ],
 });
