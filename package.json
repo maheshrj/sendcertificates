@@ -22,6 +22,7 @@
     "@radix-ui/react-select": "^2.1.2",
     "@radix-ui/react-slot": "^1.1.0",
     "@radix-ui/react-tooltip": "^1.1.4",
+    "@sentry/nextjs": "^10.36.0",
     "@tiptap/extension-paragraph": "^2.11.5",
     "@tiptap/extension-text-align": "^2.11.5",
     "@tiptap/react": "^2.11.5",

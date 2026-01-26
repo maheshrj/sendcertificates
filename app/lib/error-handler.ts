@@ -160,6 +160,32 @@ export function logError(errorDetails: ErrorDetails): void {
         // Don't log full stack in production for cleaner logs
         stack: process.env.NODE_ENV === 'development' ? errorDetails.stack : undefined
     }, null, 2));
+
+    // Send to Sentry in production
+    if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
+        try {
+            const Sentry = require('@sentry/nextjs');
+
+            Sentry.captureException(new Error(errorDetails.message), {
+                level: 'error',
+                tags: {
+                    category: errorDetails.category,
+                    batchId: errorDetails.batchId || 'unknown',
+                    errorType: 'certificate_generation'
+                },
+                extra: {
+                    email: errorDetails.email,
+                    certificateId: errorDetails.certificateId,
+                    userMessage: errorDetails.userMessage,
+                    context: errorDetails.context,
+                    timestamp: errorDetails.timestamp
+                },
+                fingerprint: [errorDetails.category, errorDetails.message]
+            });
+        } catch (sentryError) {
+            console.error('Failed to send error to Sentry:', sentryError);
+        }
+    }
 }
 
 /**
