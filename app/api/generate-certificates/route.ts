@@ -87,7 +87,7 @@ if (process.env.REDIS_URL) {
       console.log('✅ Redis is ready to accept commands');
     });
 
-    connection.on('reconnecting', (delay) => {
+    connection.on('reconnecting', (delay: number) => {
       console.log(`🔄 Redis reconnecting in ${delay}ms...`);
     });
 
