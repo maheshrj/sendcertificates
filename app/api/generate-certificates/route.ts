@@ -43,22 +43,60 @@ if (process.env.REDIS_URL) {
   try {
     // ----------------------------------------
     // Redis connection
-    // ----------------------------------------
+    // ----------------------------------------  try {
+    let connectionAttempts = 0;
+    const MAX_RETRY_ATTEMPTS = 10;
+
     connection = new IORedis(process.env.REDIS_URL, {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
+      connectTimeout: 10000, // 10 seconds
       retryStrategy(times) {
-        const delay = Math.min(times * 50, 2000);
+        connectionAttempts = times;
+
+        // Stop retrying after max attempts
+        if (times > MAX_RETRY_ATTEMPTS) {
+          console.error(`❌ Redis connection failed after ${MAX_RETRY_ATTEMPTS} attempts`);
+          return null; // Stop retrying
+        }
+
+        // Exponential backoff: 1s, 2s, 4s, 8s, max 10s
+        const delay = Math.min(times * 1000, 10000);
+        console.log(`🔄 Redis retry attempt ${times}/${MAX_RETRY_ATTEMPTS}, waiting ${delay}ms`);
         return delay;
       },
+      reconnectOnError(err) {
+        console.error('🔄 Redis reconnect on error:', err.message);
+        // Reconnect on all errors
+        return true;
+      }
     });
 
+    // Connection event handlers
     connection.on('error', (error) => {
-      console.error('Redis connection error:', error);
+      console.error('❌ Redis connection error:', error.message);
+      connectionAttempts++;
     });
 
     connection.on('connect', () => {
-      console.log('Successfully connected to Redis');
+      console.log('✅ Successfully connected to Redis');
+      connectionAttempts = 0;
+    });
+
+    connection.on('ready', () => {
+      console.log('✅ Redis is ready to accept commands');
+    });
+
+    connection.on('reconnecting', (delay) => {
+      console.log(`🔄 Redis reconnecting in ${delay}ms...`);
+    });
+
+    connection.on('close', () => {
+      console.warn('⚠️ Redis connection closed');
+    });
+
+    connection.on('end', () => {
+      console.warn('⚠️ Redis connection ended');
     });
 
     // ----------------------------------------
@@ -72,15 +110,28 @@ if (process.env.REDIS_URL) {
           type: 'exponential',
           delay: 1000,
         },
+        removeOnComplete: {
+          age: 24 * 3600, // Keep completed jobs for 24 hours
+          count: 1000, // Keep last 1000 completed jobs
+        },
+        removeOnFail: {
+          age: 7 * 24 * 3600, // Keep failed jobs for 7 days
+        },
       },
     });
+
+    // Queue event handlers
+    emailQueue.on('error', (error) => {
+      console.error('❌ Email queue error:', error.message);
+    });
+
   } catch (error) {
-    console.error('Failed to initialize Redis for generate-certificates:', error);
+    console.error('❌ Failed to initialize Redis for generate-certificates:', error);
     connection = null;
     emailQueue = null;
   }
 } else {
-  console.warn('REDIS_URL not configured - queues will be disabled for generate-certificates');
+  console.warn('⚠️ REDIS_URL not configured - queues will be disabled for generate-certificates');
 }
 
 function isValidEmail(email: string): boolean {
