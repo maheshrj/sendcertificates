@@ -24,6 +24,7 @@ export async function GET(request: Request) {
     let organizationName = 'SendCertificates';
 
     try {
+      // Try to find from recent certificate
       const recentCert = await prisma.certificate.findFirst({
         where: {
           data: {
@@ -45,6 +46,24 @@ export async function GET(request: Request) {
         logoUrl = recentCert.creator.emailConfig.logoUrl;
         supportEmail = recentCert.creator.emailConfig.supportEmail || supportEmail;
         organizationName = recentCert.creator.emailConfig.customDomain || organizationName;
+      } else {
+        // Fallback: Try to find from batch (if certificate lookup failed)
+        const recentBatch = await prisma.batch.findFirst({
+          orderBy: { createdAt: 'desc' },
+          include: {
+            creator: {
+              include: {
+                emailConfig: true
+              }
+            }
+          }
+        });
+
+        if (recentBatch?.creator?.emailConfig) {
+          logoUrl = recentBatch.creator.emailConfig.logoUrl;
+          supportEmail = recentBatch.creator.emailConfig.supportEmail || supportEmail;
+          organizationName = recentBatch.creator.emailConfig.customDomain || organizationName;
+        }
       }
     } catch (err) {
       console.log('Could not fetch organization info:', err);
