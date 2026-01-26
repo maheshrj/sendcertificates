@@ -47,14 +47,14 @@ echo "Backup created: ${BACKUP_FILE}.gz (Size: $SIZE)" >> /var/log/db-backup.log
 if [ "$GDRIVE_ENABLED" = true ]; then
     if command -v rclone &> /dev/null; then
         echo "Uploading to Google Drive..." >> /var/log/db-backup.log
-        rclone copy "${BACKUP_FILE}.gz" gdrive:certificate-backups/ --log-file=/var/log/db-backup.log --log-level INFO
+        rclone copy "${BACKUP_FILE}.gz" cpgdrive:certificate-backups/ --log-file=/var/log/db-backup.log --log-level INFO
         
         if [ $? -eq 0 ]; then
             echo "✅ Backup uploaded to Google Drive successfully" >> /var/log/db-backup.log
             
             # Delete old backups from Google Drive (older than 30 days)
             echo "Cleaning up old Google Drive backups..." >> /var/log/db-backup.log
-            rclone delete gdrive:certificate-backups/ --min-age ${RETENTION_DAYS}d --log-file=/var/log/db-backup.log
+            rclone delete cpgdrive:certificate-backups/ --min-age ${RETENTION_DAYS}d --log-file=/var/log/db-backup.log
         else
             echo "❌ Failed to upload to Google Drive" >> /var/log/db-backup.log
         fi

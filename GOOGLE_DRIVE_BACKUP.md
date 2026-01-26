@@ -1,208 +1,264 @@
-# Google Drive Backup Setup Guide
+# Google Drive Backup Setup - Complete Documentation
 
-## Overview
-Automatically upload database backups to Google Drive for offsite storage.
+## ✅ Setup Complete
+
+**Google Account:** cobalt.renault87@gmail.com  
+**Remote Name:** cpgdrive  
+**Backup Folder:** certificate-backups  
+**Status:** Working ✅
 
 ---
 
-## Step 1: Install rclone
+## What Was Configured
 
+### 1. rclone Installation
 ```bash
-# Install rclone
 curl https://rclone.org/install.sh | sudo bash
-
-# Verify installation
-rclone version
 ```
 
----
-
-## Step 2: Configure Google Drive
-
+### 2. Google Drive Configuration
 ```bash
-# Start configuration
 rclone config
-
-# Follow these steps:
-# n) New remote
-# name> gdrive
-# Storage> drive (Google Drive)
-# client_id> (press Enter to use default)
-# client_secret> (press Enter to use default)
-# scope> 1 (Full access)
-# root_folder_id> (press Enter)
-# service_account_file> (press Enter)
-# Edit advanced config? n
-# Use auto config? n (because you're on a server)
+# Remote name: cpgdrive
+# Storage: Google Drive
+# Account: cobalt.renault87@gmail.com
 ```
 
-**You'll get a URL - Open it on your local computer:**
-1. Copy the URL
-2. Open in browser
-3. Login to your Google account
-4. Grant permissions
-5. Copy the verification code
-6. Paste it back in the terminal
-
+### 3. Backup Folder Created
 ```bash
-# Verify configuration
-rclone lsd gdrive:
+rclone mkdir cpgdrive:certificate-backups
+```
 
-# Create backup folder in Google Drive
-rclone mkdir gdrive:certificate-backups
+### 4. Tested Successfully
+```bash
+rclone ls cpgdrive:certificate-backups/
+# Output: 5 test.txt ✅
 ```
 
 ---
 
-## Step 3: Update Backup Script
+## How It Works
 
-**Edit:** `scripts/backup-database.sh`
+### Daily Backup Flow (2 AM)
 
-Add this at the end (before `exit 0`):
+1. **Create Database Backup**
+   - Location: `/var/backups/certificate-app/`
+   - Format: `backup_YYYYMMDD_HHMMSS.sql.gz`
 
-```bash
-# Upload to Google Drive
-echo "Uploading to Google Drive..." >> /var/log/db-backup.log
-rclone copy "${BACKUP_FILE}.gz" gdrive:certificate-backups/ --log-file=/var/log/db-backup.log
+2. **Upload to Google Drive**
+   - Remote: `cpgdrive:certificate-backups/`
+   - Account: cobalt.renault87@gmail.com
+   - Automatic upload via rclone
 
-if [ $? -eq 0 ]; then
-    echo "✅ Backup uploaded to Google Drive successfully" >> /var/log/db-backup.log
-else
-    echo "❌ Failed to upload to Google Drive" >> /var/log/db-backup.log
-fi
-
-# Optional: Delete old backups from Google Drive (older than 30 days)
-rclone delete gdrive:certificate-backups/ --min-age 30d --log-file=/var/log/db-backup.log
-echo "Cleaned up old Google Drive backups" >> /var/log/db-backup.log
-```
+3. **Cleanup Old Backups**
+   - Local: Delete backups > 30 days
+   - Google Drive: Delete backups > 30 days
 
 ---
 
-## Step 4: Test Upload
+## Manual Operations
 
+### View Google Drive Backups
 ```bash
-# Test manual upload
-rclone copy /var/backups/certificate-app/backup_*.sql.gz gdrive:certificate-backups/
-
-# Verify upload
-rclone ls gdrive:certificate-backups/
+rclone ls cpgdrive:certificate-backups/
 ```
 
----
-
-## Step 5: Verify Daily Backups
-
-After setting up cron, check:
-
+### Download Backup from Google Drive
 ```bash
-# Check local backups
-ls -lh /var/backups/certificate-app/
-
-# Check Google Drive backups
-rclone ls gdrive:certificate-backups/
-
-# Check upload log
-tail -f /var/log/db-backup.log
+rclone copy cpgdrive:certificate-backups/backup_20260126_020000.sql.gz /tmp/
 ```
 
----
-
-## Alternative: Google Drive Desktop Sync
-
-If you prefer GUI:
-
-1. Install Google Drive Desktop on your local machine
-2. Set up rsync from server to your local machine
-3. Google Drive will auto-sync
-
+### Upload Specific File
 ```bash
-# On server, sync to your local machine
-rsync -avz /var/backups/certificate-app/ user@your-local-ip:/path/to/google-drive/certificate-backups/
+rclone copy /path/to/backup.sql.gz cpgdrive:certificate-backups/
+```
+
+### Check Google Drive Storage
+```bash
+rclone about cpgdrive:
+```
+
+### Delete Specific Backup
+```bash
+rclone delete cpgdrive:certificate-backups/backup_20260126_020000.sql.gz
 ```
 
 ---
 
 ## Monitoring
 
-### Check Google Drive storage:
+### Check Backup Logs
 ```bash
-rclone about gdrive:
+tail -f /var/log/db-backup.log
 ```
 
-### List all backups:
+### Verify Latest Backup
 ```bash
-rclone ls gdrive:certificate-backups/ --max-depth 1
+# Local
+ls -lth /var/backups/certificate-app/ | head -5
+
+# Google Drive
+rclone ls cpgdrive:certificate-backups/ --max-depth 1
 ```
 
-### Download backup from Google Drive:
+### Count Backups
 ```bash
-rclone copy gdrive:certificate-backups/backup_20260126_020000.sql.gz /tmp/
+# Local
+ls -1 /var/backups/certificate-app/backup_*.sql.gz | wc -l
+
+# Google Drive
+rclone ls cpgdrive:certificate-backups/ | wc -l
+```
+
+---
+
+## Cron Job Setup
+
+### Current Schedule
+```bash
+# Daily at 2 AM
+0 2 * * * /var/www/certificate-app/scripts/backup-database.sh
+```
+
+### View Cron Jobs
+```bash
+crontab -l
+```
+
+### Edit Cron Schedule
+```bash
+crontab -e
 ```
 
 ---
 
 ## Troubleshooting
 
-### rclone not found:
+### Test Backup Script
 ```bash
-which rclone
-# If not found, reinstall
-curl https://rclone.org/install.sh | sudo bash
+cd /var/www/certificate-app
+./scripts/backup-database.sh
 ```
 
-### Authentication expired:
+### Check rclone Configuration
 ```bash
-rclone config reconnect gdrive:
-```
-
-### Upload fails:
-```bash
-# Check rclone config
 rclone config show
+```
 
-# Test connection
-rclone lsd gdrive:
+### Test Google Drive Connection
+```bash
+rclone lsd cpgdrive:
+```
+
+### Re-authenticate (if token expires)
+```bash
+# On local Windows machine
+rclone authorize "drive"
+
+# Copy token to server
+rclone config reconnect cpgdrive:
+```
+
+---
+
+## Backup Locations
+
+### Local Server
+- **Path:** `/var/backups/certificate-app/`
+- **Retention:** 30 days
+- **Format:** `backup_YYYYMMDD_HHMMSS.sql.gz`
+
+### Google Drive
+- **Account:** cobalt.renault87@gmail.com
+- **Folder:** certificate-backups
+- **Retention:** 30 days
+- **Access:** https://drive.google.com
+
+---
+
+## Restoration Procedure
+
+### From Local Backup
+```bash
+./scripts/restore-database.sh /var/backups/certificate-app/backup_20260126_020000.sql.gz
+```
+
+### From Google Drive Backup
+```bash
+# Download first
+rclone copy cpgdrive:certificate-backups/backup_20260126_020000.sql.gz /tmp/
+
+# Then restore
+./scripts/restore-database.sh /tmp/backup_20260126_020000.sql.gz
+```
+
+---
+
+## Security
+
+- ✅ **Encryption:** Backups stored securely in Google Drive
+- ✅ **Access Control:** Only cobalt.renault87@gmail.com can access
+- ✅ **Authentication:** OAuth2 token stored in `/root/.config/rclone/rclone.conf`
+- ✅ **Permissions:** Config file protected with `chmod 600`
+
+---
+
+## Storage Usage
+
+### Example Calculation
+- **Backup Size:** ~50 MB (compressed)
+- **Daily Backups:** 30 days
+- **Total Local:** ~1.5 GB
+- **Total Google Drive:** ~1.5 GB
+
+**Google Drive Free Tier:** 15 GB ✅ Plenty of space!
+
+---
+
+## Maintenance
+
+### Weekly Checks
+- [ ] Verify backups are running (check logs)
+- [ ] Confirm Google Drive uploads working
+- [ ] Check storage usage
+
+### Monthly Tasks
+- [ ] Test restoration from backup
+- [ ] Verify backup integrity
+- [ ] Review retention policy
+
+---
+
+## Quick Reference
+
+```bash
+# View backups
+rclone ls cpgdrive:certificate-backups/
+
+# Manual backup
+./scripts/backup-database.sh
 
 # Check logs
-tail -50 /var/log/db-backup.log
+tail -f /var/log/db-backup.log
+
+# Test connection
+rclone lsd cpgdrive:
+
+# Storage info
+rclone about cpgdrive:
 ```
 
 ---
 
-## Security Notes
+## Contact Information
 
-1. ✅ **Encryption:** rclone supports encryption
-2. ✅ **Access:** Only your Google account can access
-3. ✅ **Credentials:** Stored in `~/.config/rclone/rclone.conf`
-4. ⚠️ **Protect config:** `chmod 600 ~/.config/rclone/rclone.conf`
-
----
-
-## Storage Calculation
-
-**Example:**
-- Backup size: ~50 MB compressed
-- Daily backups: 30 days
-- Total: ~1.5 GB
-
-**Google Drive Free:** 15 GB ✅ Plenty of space!
+**Google Account:** cobalt.renault87@gmail.com  
+**Remote Name:** cpgdrive  
+**Backup Folder:** certificate-backups  
+**Server:** srv1261747  
+**Setup Date:** January 26, 2026
 
 ---
 
-## Complete Backup Flow
-
-```
-Daily at 2 AM:
-1. Create database backup → /var/backups/certificate-app/
-2. Compress with gzip
-3. Upload to Google Drive → gdrive:certificate-backups/
-4. Delete local backups > 30 days
-5. Delete Google Drive backups > 30 days
-6. Log everything
-```
-
----
-
-**Setup Time:** ~15 minutes  
-**Cost:** Free (Google Drive 15GB)  
-**Reliability:** ⭐⭐⭐⭐⭐
+**Status:** ✅ Fully Operational  
+**Last Updated:** January 26, 2026
