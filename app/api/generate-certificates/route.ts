@@ -454,10 +454,8 @@ async function prepareEmailData(
   const nameKey = Object.keys(record).find((k) => k.toLowerCase() === 'name');
   const recipientName = nameKey ? record[nameKey].trim() : '';
 
-  // Personalize subject line
-  const personalizedSubject = recipientName
-    ? `${emailSubject}, ${recipientName}!`
-    : emailSubject;
+  // Use subject as-is (user can add variables like ~Name~ themselves)
+  const personalizedSubject = emailSubject;
 
   // Generate unsubscribe URL
   const unsubscribeUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/api/unsubscribe?email=${encodeURIComponent(emailAddress)}`;
@@ -526,13 +524,10 @@ Unsubscribe from certificate emails: ${unsubscribeUrl}
           </div>
           ` : ''}
           
-          <!-- AWS Compliance Footer -->
+          <!-- Certificate Link (AWS SES Compliance) -->
           <div style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #e0e0e0;">
-            <p style="font-size: 11px; color: #999; text-align: center; margin: 5px 0;">
-              Certificate Link: <a href="${certificateUrl}" style="color: #007BFF; word-break: break-all; text-decoration: none;">${certificateUrl}</a>
-            </p>
-            <p style="font-size: 10px; color: #aaa; text-align: center; margin: 5px 0;">
-              This link is provided for verification and AWS SES compliance.
+            <p style="font-size: 10px; color: #bbb; text-align: center; margin: 5px 0;">
+              <a href="${certificateUrl}" style="color: #999; word-break: break-all; text-decoration: none;">${certificateUrl}</a>
             </p>
           </div>
           
