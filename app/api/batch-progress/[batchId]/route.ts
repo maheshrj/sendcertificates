@@ -5,9 +5,9 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: { batchId: string } }
+    { params }: { params: Promise<{ batchId: string }> }
 ) {
-    const { batchId } = params;
+    const { batchId } = await params;
 
     // Create a readable stream for SSE
     const encoder = new TextEncoder();
