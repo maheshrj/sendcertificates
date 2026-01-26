@@ -21,12 +21,12 @@ export async function GET(
                         where: { id: batchId },
                         select: {
                             id: true,
-                            totalEmails: true,
-                            emailsSent: true,
-                            status: true,
+                            name: true,
+                            progress: true,
                             _count: {
                                 select: {
                                     certificates: true,
+                                    failedCertificates: true,
                                 },
                             },
                         },
@@ -41,10 +41,18 @@ export async function GET(
                     }
 
                     // Calculate progress
-                    const total = batch.totalEmails;
-                    const completed = batch.emailsSent || 0;
-                    const failed = batch._count.certificates - completed;
-                    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+                    const total = batch._count.certificates + batch._count.failedCertificates;
+                    const completed = batch._count.certificates;
+                    const failed = batch._count.failedCertificates;
+                    const percentage = batch.progress;
+
+                    // Determine status based on progress
+                    let status = 'processing';
+                    if (percentage >= 100) {
+                        status = failed > 0 ? 'completed_with_errors' : 'completed';
+                    } else if (percentage === 0 && total === 0) {
+                        status = 'pending';
+                    }
 
                     const progressData = {
                         batchId: batch.id,
@@ -52,7 +60,7 @@ export async function GET(
                         completed,
                         failed,
                         percentage,
-                        status: batch.status,
+                        status,
                     };
 
                     // Send progress update
@@ -61,7 +69,7 @@ export async function GET(
                     );
 
                     // Close stream if batch is complete
-                    if (batch.status === 'completed' || batch.status === 'failed') {
+                    if (status === 'completed' || status === 'completed_with_errors') {
                         controller.close();
                     }
                 } catch (error) {
