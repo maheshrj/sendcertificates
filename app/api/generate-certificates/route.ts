@@ -507,33 +507,37 @@ Unsubscribe from certificate emails: ${unsubscribeUrl}
       : ''
     }
           <h2 style="color: #333; text-align: center; margin-bottom: 20px;">${emailHeading}</h2>
-          ${recipientName ? `<p style="color: #555; font-size: 16px;">Dear ${recipientName},</p>` : ''}
-          <p style="color: #555; font-size: 16px;">${emailMessage}</p>
+          <p style="color: #555; font-size: 16px; text-align: center;">${emailMessage}</p>
           
-          <!-- Prominent Download Button -->
+          <!-- Download Button -->
           <div style="text-align: center; margin: 30px 0;">
             <a href="${certificateUrl}" style="display: inline-block; background-color: #007BFF; color: #ffffff; text-decoration: none; padding: 14px 30px; border-radius: 5px; font-size: 16px; font-weight: bold;">
-              📥 Download Your Certificate
+              Download Certificate
             </a>
           </div>
-          
-          <!-- Alternative text link -->
-          <p style="text-align: center; font-size: 14px; color: #666;">
-            Or copy this link: <a href="${certificateUrl}" style="color: #007BFF; word-break: break-all;">${certificateUrl}</a>
-          </p>
           
           ${validationUrl ? `
           <!-- Certificate Validation -->
           <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
             <p style="margin: 0; font-size: 14px; color: #555;">
-              🔒 <strong>Verify this certificate:</strong><br>
+              <strong>Verify this certificate:</strong><br>
               <a href="${validationUrl}" style="color: #007BFF; text-decoration: none;">${validationUrl}</a>
             </p>
           </div>
           ` : ''}
           
+          <!-- AWS Compliance Footer -->
+          <div style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #e0e0e0;">
+            <p style="font-size: 11px; color: #999; text-align: center; margin: 5px 0;">
+              Certificate Link: <a href="${certificateUrl}" style="color: #007BFF; word-break: break-all; text-decoration: none;">${certificateUrl}</a>
+            </p>
+            <p style="font-size: 10px; color: #aaa; text-align: center; margin: 5px 0;">
+              This link is provided for verification and AWS SES compliance.
+            </p>
+          </div>
+          
           <!-- Professional Footer -->
-          <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; font-size: 12px; color: #777;">
+          <footer style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; font-size: 12px; color: #777;">
             <p style="margin: 5px 0;">This certificate was sent by <strong>${emailConfig?.customDomain || 'SendCertificates'}</strong></p>
             <p style="margin: 5px 0;">
               Questions? Contact us at 
@@ -542,12 +546,12 @@ Unsubscribe from certificate emails: ${unsubscribeUrl}
               </a>
             </p>
             <p style="margin: 15px 0 5px 0;">
-              <a href="${unsubscribeUrl}" style="color: #999; text-decoration: underline; font-size: 11px;">
-                Unsubscribe from certificate emails
+              <a href="${unsubscribeUrl}" style="color: #007BFF; text-decoration: none; font-size: 12px;">
+                Unsubscribe
               </a>
             </p>
             <p style="margin: 10px 0; font-size: 11px; color: #999;">
-              📧 This is an automated message. Please do not reply to this email.
+              This is an automated message. Please do not reply to this email.
             </p>
           </footer>
         </div>
