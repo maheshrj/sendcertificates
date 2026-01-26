@@ -154,8 +154,9 @@ function getSuccessPage(email: string, logoUrl: string | null, supportEmail: str
       margin-bottom: 30px;
     }
     .logo img {
-      height: 60px;
-      max-width: 200px;
+      height: 80px;
+      max-width: 250px;
+      object-fit: contain;
     }
     .icon {
       width: 80px;
@@ -224,6 +225,9 @@ function getSuccessPage(email: string, logoUrl: string | null, supportEmail: str
       h1 {
         font-size: 26px;
       }
+      .logo img {
+        height: 60px;
+      }
       .icon {
         width: 70px;
         height: 70px;
@@ -238,9 +242,9 @@ function getSuccessPage(email: string, logoUrl: string | null, supportEmail: str
     <div class="logo">
       <img src="${logoUrl}" alt="${organizationName}" />
     </div>
-    ` : ''}
-    
+    ` : `
     <div class="icon">&#10003;</div>
+    `}
     
     <h1>Unsubscribed Successfully</h1>
     
