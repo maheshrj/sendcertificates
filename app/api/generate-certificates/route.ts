@@ -67,7 +67,7 @@ if (process.env.REDIS_URL) {
     emailQueue = new Queue('emailQueue', {
       connection,
       defaultJobOptions: {
-        attempts: 3,
+        attempts: 5, // Retry up to 5 times
         backoff: {
           type: 'exponential',
           delay: 1000,
