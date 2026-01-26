@@ -189,10 +189,27 @@ if (connection && emailQueue) {
         });
 
         await transporter.sendMail(mailOptions);
-        console.log(`Email sent to ${email} for user ${userId}`);
-      } catch (emailError) {
-        console.error(`Failed to send email to ${email}:`, emailError);
-        throw emailError; // triggers BullMQ retry
+        console.log(`✅ Email sent successfully to ${email} for batch ${batchId}`);
+      } catch (emailError: any) {
+        // Enhanced error logging with categorization
+        const { createErrorDetails, logError } = await import('@/app/lib/error-handler');
+
+        const errorDetails = createErrorDetails(emailError, {
+          email,
+          batchId,
+          additionalContext: {
+            userId,
+            emailFrom,
+            ccCount: ccEmails?.length || 0,
+            bccCount: bccEmails?.length || 0,
+            attemptNumber: job?.attemptsMade || 0
+          }
+        });
+
+        logError(errorDetails);
+
+        // Throw error to trigger BullMQ retry
+        throw new Error(`${errorDetails.category}: ${errorDetails.userMessage}`);
       }
     },
     {
@@ -206,23 +223,42 @@ if (connection && emailQueue) {
   );
 
   emailWorker.on('error', (err) => {
-    console.error('Email worker error:', err);
+    console.error('❌ [EMAIL_WORKER_ERROR]', {
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
   });
 
-  emailWorker.on('failed', (job, err) => {
+  emailWorker.on('failed', async (job, err) => {
     if (job) {
-      console.error(`Email job ${job.id} failed with error:`, err);
-      console.log(`Attempt ${job.attemptsMade} of ${job.opts.attempts}`);
+      const { createErrorDetails, logError } = await import('@/app/lib/error-handler');
+
+      const errorDetails = createErrorDetails(err, {
+        email: job.data.email,
+        batchId: job.data.batchId,
+        additionalContext: {
+          jobId: job.id,
+          attemptsMade: job.attemptsMade,
+          maxAttempts: job.opts.attempts,
+          finalAttempt: job.attemptsMade >= (job.opts.attempts || 3)
+        }
+      });
+
+      logError(errorDetails);
+
+      if (job.attemptsMade >= (job.opts.attempts || 3)) {
+        console.error(`❌ [EMAIL_FINAL_FAILURE] Job ${job.id} failed permanently after ${job.attemptsMade} attempts`);
+      } else {
+        console.log(`⚠️  [EMAIL_RETRY] Job ${job.id} will retry (attempt ${job.attemptsMade}/${job.opts.attempts})`);
+      }
     } else {
-      console.error('An email job failed but job details are unavailable:', err);
+      console.error('❌ [EMAIL_JOB_FAILED] Job details unavailable:', err);
     }
   });
 
   emailWorker.on('completed', (job) => {
     if (job) {
-      console.log(`Email job ${job.id} completed successfully`);
-    } else {
-      console.log('An email job completed but job details are unavailable');
+      console.log(`✅ [EMAIL_SUCCESS] Job ${job.id} completed for ${job.data.email}`);
     }
   });
 }
