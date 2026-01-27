@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { ResendConfirmationModal } from './ResendConfirmationModal';
 
 export interface Batch {
   id: string;
@@ -26,6 +27,7 @@ interface BounceData {
   };
   failedEmails: {
     technical: Array<{
+      id: string;
       email: string;
       reason: string;
       retryCount: number;
@@ -54,6 +56,9 @@ export function BounceAnalysis({ batches = [] }: BounceAnalysisProps) {
   const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
   const [resending, setResending] = useState(false);
 
+  // Resend Modal State
+  const [isResendModalOpen, setIsResendModalOpen] = useState(false);
+
   const handleAnalyze = async () => {
     if (!selectedBatch) {
       setError('Please select a batch');
@@ -63,6 +68,7 @@ export function BounceAnalysis({ batches = [] }: BounceAnalysisProps) {
     setIsLoading(true);
     setError(null);
     setBounceData(null);
+    setSelectedEmails([]); // Reset selection
 
     try {
       const res = await fetch(`/api/analytics/bounce-results/${selectedBatch}`);
@@ -93,36 +99,34 @@ export function BounceAnalysis({ batches = [] }: BounceAnalysisProps) {
     );
   };
 
-  const handleResend = async () => {
+  const handleResend = () => {
     if (selectedEmails.length === 0) {
       alert('Please select emails to resend');
       return;
     }
+    setIsResendModalOpen(true);
+  };
 
-    // Calculate estimated tokens (rough estimate: 1 per email, actual may be higher with CC/BCC)
-    const estimatedTokens = selectedEmails.length;
-
-    const confirmMessage = `Resend certificates to ${selectedEmails.length} email(s)?
-
-This will:
-• Create a new batch: "${bounceData?.batch.name} - Resend"
-• Deduct approximately ${estimatedTokens}+ tokens (includes CC/BCC if any)
-• Queue emails for immediate sending
-
-Continue?`;
-
-    if (!confirm(confirmMessage)) {
-      return;
-    }
+  const confirmResend = async () => {
+    if (!bounceData || !selectedBatch) return;
 
     setResending(true);
     try {
-      const res = await fetch('/api/analytics/resend-failed', {
+      // Map selected emails back to IDs
+      // Note: We use emails for selection state but need IDs for API
+      const targetIds = bounceData.failedEmails.technical
+        .filter(f => selectedEmails.includes(f.email))
+        .map(f => f.id);
+
+      if (targetIds.length === 0) {
+        throw new Error('No valid certificates selected for resend');
+      }
+
+      const res = await fetch(`/api/batches/${selectedBatch}/resend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          originalBatchId: selectedBatch,
-          emails: selectedEmails,
+          failedCertificateIds: targetIds,
         }),
       });
 
@@ -132,11 +136,13 @@ Continue?`;
       }
 
       const result = await res.json();
+
+      // Close modal
+      setIsResendModalOpen(false);
+
       alert(`✅ Resend Successful!
 
-New Batch: ${result.newBatchName}
-Emails Queued: ${result.emailsToResend}
-Tokens Deducted: ${result.tokensDeducted}
+New Batch: ${result.message}
 
 The certificates are now being generated and will be sent shortly.`);
 
@@ -360,6 +366,15 @@ The certificates are now being generated and will be sent shortly.`);
           )}
         </div>
       )}
+
+      <ResendConfirmationModal
+        open={isResendModalOpen}
+        onOpenChange={setIsResendModalOpen}
+        onConfirm={confirmResend}
+        count={selectedEmails.length}
+        batchName={bounceData?.batch.name || 'Batch'}
+        isResending={resending}
+      />
     </div>
   );
 }

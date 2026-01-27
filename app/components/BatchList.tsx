@@ -1,13 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
 import { format } from 'date-fns';
+import BatchProgress from '@/app/components/BatchProgress';
+import { BatchDetailsModal } from '@/app/components/BatchDetailsModal';
 import { InvalidEmail } from '@/app/types';
 
 interface Batch {
@@ -16,61 +12,34 @@ interface Batch {
   createdAt: string;
   _count: {
     certificates: number;
+    failedCertificates?: number;
   };
 }
-
-interface Certificate {
-  id: string;
-  uniqueIdentifier: string;
-  generatedImageUrl: string;
-  data: Record<string, string>;
-  createdAt: string;
-}
-
 
 export function BatchList() {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null);
-  const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isCertificatesLoading, setIsCertificatesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [certPage, setCertPage] = useState(1);
   const [pagination, setPagination] = useState<{
     total: number;
     pageSize: number;
     currentPage: number;
     totalPages: number;
   } | null>(null);
-  const [certPagination, setCertPagination] = useState<{
-    total: number;
-    pageSize: number;
-    currentPage: number;
-    totalPages: number;
-  } | null>(null);
-  const [invalidEmails, setInvalidEmails] = useState<InvalidEmail[]>([]);
-  const [showInvalidEmails, setShowInvalidEmails] = useState(false);
 
   useEffect(() => {
     fetchBatches(currentPage);
   }, [currentPage]);
-
-  useEffect(() => {
-    if (selectedBatch && isDialogOpen) {
-      fetchCertificates(certPage);
-      fetchInvalidEmails(selectedBatch.id);
-    }
-  }, [selectedBatch, certPage, isDialogOpen]);
-
 
   const downloadBatchCSV = async (batchId: string, batchName: string) => {
     try {
       const response = await fetch(`/api/batches/${batchId}/download`);
       if (!response.ok) throw new Error('Failed to download batch data');
       const blob = await response.blob();
-      
+
       // Create download link
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -78,23 +47,12 @@ export function BatchList() {
       a.download = `${batchName}-${format(new Date(), 'yyyy-MM-dd')}.csv`;
       document.body.appendChild(a);
       a.click();
-      
+
       // Cleanup
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err) {
       console.error('Failed to download batch data:', err);
-    }
-  };
-
-  const fetchInvalidEmails = async (batchId: string) => {
-    try {
-      const response = await fetch(`/api/batches/${batchId}/invalid-emails`);
-      if (!response.ok) throw new Error('Failed to fetch invalid emails');
-      const data = await response.json();
-      setInvalidEmails(data.invalidEmails);
-    } catch (err) {
-      console.error('Failed to fetch invalid emails:', err);
     }
   };
 
@@ -115,27 +73,6 @@ export function BatchList() {
       setError(err instanceof Error ? err.message : 'Failed to load batches');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const fetchCertificates = async (page: number) => {
-    if (!selectedBatch) return;
-    try {
-      setIsCertificatesLoading(true);
-      const response = await fetch(`/api/batches/${selectedBatch.id}/certificates?page=${page}`);
-      if (!response.ok) throw new Error('Failed to fetch certificates');
-      const data = await response.json();
-      setCertificates(data.certificates);
-      setCertPagination({
-        total: data.total,
-        pageSize: 10,
-        currentPage: page,
-        totalPages: data.pages
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load certificates');
-    } finally {
-      setIsCertificatesLoading(false);
     }
   };
 
@@ -216,7 +153,7 @@ export function BatchList() {
   return (
     <div className="bg-white shadow rounded-lg p-6">
       <h2 className="text-xl font-semibold mb-4">Certificate Batches</h2>
-      
+
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
@@ -230,6 +167,9 @@ export function BatchList() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Certificates
               </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+                Progress
+              </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Actions
               </th>
@@ -241,19 +181,27 @@ export function BatchList() {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {format(new Date(batch.createdAt), 'MMM d, yyyy HH:mm')}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
                   {batch.name}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {batch._count.certificates}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <BatchProgress
+                    batchId={batch.id}
+                    variant="compact"
+                    onClick={() => {
+                      setSelectedBatch(batch);
+                      setIsDialogOpen(true);
+                    }}
+                  />
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   <button
                     onClick={() => {
                       setSelectedBatch(batch);
-                      setCertPage(1);
                       setIsDialogOpen(true);
-                      setShowInvalidEmails(false);
                     }}
                     className="text-blue-600 hover:text-blue-900"
                   >
@@ -273,134 +221,18 @@ export function BatchList() {
       </div>
 
       {!isLoading && !error && batches.length > 0 && (
-        <PaginationControls 
-          paginationData={pagination} 
+        <PaginationControls
+          paginationData={pagination}
           onPageChange={setCurrentPage}
           currentPageNum={currentPage}
         />
       )}
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto w-[90vw]">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedBatch?.name} - {showInvalidEmails ? 'Invalid Emails' : 'Certificates'}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="flex justify-end mb-4">
-            <button
-              onClick={() => setShowInvalidEmails(!showInvalidEmails)}
-              className="text-sm text-blue-600 hover:text-blue-900"
-            >
-              {showInvalidEmails ? 'Show Certificates' : 'Show Invalid Emails'}
-            </button>
-          </div>
-
-          <div className="mt-4 overflow-x-auto">
-            {showInvalidEmails ? (
-              invalidEmails.length > 0 ? (
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Email
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Reason
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Date
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {invalidEmails.map((invalid) => (
-                      <tr key={invalid.id}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {invalid.email}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {invalid.reason}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {format(new Date(invalid.createdAt), 'MMM d, yyyy HH:mm')}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <p className="text-center text-gray-500">No invalid emails found in this batch.</p>
-              )
-            ) : (
-              isCertificatesLoading ? (
-                <div className="animate-pulse">
-                  <div className="space-y-3">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="h-4 bg-gray-200 rounded"></div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="min-w-full">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Date
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          ID
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Email
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {certificates.map((cert) => (
-                        <tr key={cert.id}>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {format(new Date(cert.createdAt), 'MMM d, yyyy HH:mm')}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {cert.uniqueIdentifier}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {cert.data.email || cert.data.Email || cert.data.EMAIL || 'N/A'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <a
-                              href={cert.generatedImageUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-900"
-                            >
-                              View Certificate
-                            </a>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  {certPagination && certificates.length > 0 && (
-                    <PaginationControls 
-                      paginationData={certPagination}
-                      onPageChange={setCertPage}
-                      currentPageNum={certPage}
-                    />
-                  )}
-                </div>
-              )
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <BatchDetailsModal
+        batchId={selectedBatch?.id || null}
+        open={isDialogOpen}
+        onOpenChange={setIsDialogOpen}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/lib/db';
 import jwt from 'jsonwebtoken';
+import { categorizeError } from '@/app/lib/batch-utils';
 
 function getUserIdFromRequest(request: Request): string | null {
   const authHeader = request.headers.get('authorization');
@@ -40,12 +41,25 @@ export async function GET(
 
     const { batchId } = await params;
 
-    // Simplified version - full functionality requires Phase 2/3 schema updates
-    // (FailedEmail model, status field, totalInCSV, totalSent, totalFailed fields)
     const batch = await prisma.batch.findUnique({
       where: { id: batchId },
       include: {
-        certificates: true,
+        certificates: {
+          select: { id: true }
+        },
+        failedCertificates: {
+          select: {
+            id: true,
+            error: true,
+            data: true,
+            createdAt: true
+          }
+        },
+        invalidEmails: {
+          select: {
+            id: true
+          }
+        }
       },
     });
 
@@ -53,24 +67,51 @@ export async function GET(
       return NextResponse.json({ error: 'Batch not found' }, { status: 404 });
     }
 
-    // Return basic info until schema is updated
+    const technicalFailures: any[] = [];
+    const complianceFailures: any[] = [];
+
+    batch.failedCertificates.forEach(failed => {
+      const errorDetails = categorizeError(failed.error);
+      const data = failed.data as any;
+      const email = data.email || data.recipientEmail || 'Unknown';
+
+      const entry = {
+        id: failed.id,
+        email: email,
+        reason: errorDetails.displayName,
+        errorDetails: failed.error,
+        canResend: errorDetails.canResend,
+        retryCount: 0, // Not tracked in this model yet
+        date: failed.createdAt.toISOString()
+      };
+
+      if (errorDetails.canResend) {
+        technicalFailures.push(entry);
+      } else {
+        complianceFailures.push(entry);
+      }
+    });
+
     return NextResponse.json({
       batch: {
         id: batch.id,
         name: batch.name,
+        totalInCSV: batch.certificates.length + batch.failedCertificates.length + batch.invalidEmails.length,
+        totalSent: batch.certificates.length,
+        totalFailed: batch.failedCertificates.length + batch.invalidEmails.length,
+        analysisStatus: 'Complete',
         createdAt: batch.createdAt,
       },
       failedEmails: {
-        technical: [],
-        compliance: [],
+        technical: technicalFailures,
+        compliance: complianceFailures,
       },
       certificates: {
-        total: batch.certificates.length,
-        success: 0,
-        failed: 0,
+        total: batch.certificates.length + batch.failedCertificates.length,
+        success: batch.certificates.length,
+        failed: batch.failedCertificates.length,
         pending: 0,
       },
-      message: 'Bounce analysis requires Phase 2/3 schema updates (FailedEmail model, status field, etc.)'
     });
   } catch (error) {
     console.error('Error fetching bounce results:', error);
