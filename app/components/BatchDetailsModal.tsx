@@ -8,8 +8,9 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, AlertCircle } from 'lucide-react';
 import { ResendConfirmationModal } from './ResendConfirmationModal';
+import { ErrorDetailsModal } from './ErrorDetailsModal';
 
 interface BatchDetailsModalProps {
     batchId: string | null;
@@ -69,6 +70,9 @@ export function BatchDetailsModal({ batchId, open, onOpenChange }: BatchDetailsM
     const [pendingResendIds, setPendingResendIds] = useState<string[]>([]);
     const [isResending, setIsResending] = useState(false);
 
+    // Error Details State
+    const [selectedErrorItem, setSelectedErrorItem] = useState<BatchDetails['failed'][0] | null>(null);
+
     useEffect(() => {
         if (open && batchId) {
             fetchBatchDetails();
@@ -110,6 +114,13 @@ export function BatchDetailsModal({ batchId, open, onOpenChange }: BatchDetailsM
     const handleResend = (failedCertIds: string[]) => {
         setPendingResendIds(failedCertIds);
         setIsResendModalOpen(true);
+    };
+
+    const handleRetrySingle = (id: string) => {
+        // Close error modal if open
+        setSelectedErrorItem(null);
+        // Open resend confirmation for specific ID
+        handleResend([id]);
     };
 
     const confirmResend = async () => {
@@ -239,7 +250,13 @@ export function BatchDetailsModal({ batchId, open, onOpenChange }: BatchDetailsM
                                 {/* Content */}
                                 <div className="min-h-[200px]">
                                     {activeTab === 'completed' && <CompletedTable certificates={data.completed} />}
-                                    {activeTab === 'failed' && <FailedTable certificates={data.failed} onResend={handleResend} />}
+                                    {activeTab === 'failed' && (
+                                        <FailedTable
+                                            certificates={data.failed}
+                                            onResend={handleResend}
+                                            onViewError={setSelectedErrorItem}
+                                        />
+                                    )}
                                     {activeTab === 'invalid' && <InvalidTable emails={data.invalid} />}
                                 </div>
                             </div>
@@ -256,6 +273,17 @@ export function BatchDetailsModal({ batchId, open, onOpenChange }: BatchDetailsM
                 batchName={data?.batch.name || 'Batch'}
                 isResending={isResending}
             />
+
+            {selectedErrorItem && (
+                <ErrorDetailsModal
+                    open={!!selectedErrorItem}
+                    onOpenChange={(open) => !open && setSelectedErrorItem(null)}
+                    error={selectedErrorItem.error}
+                    email={selectedErrorItem.email}
+                    id={selectedErrorItem.id}
+                    onRetry={handleRetrySingle}
+                />
+            )}
         </>
     );
 }
@@ -298,7 +326,11 @@ function CompletedTable({ certificates }: { certificates: any[] }) {
     );
 }
 
-function FailedTable({ certificates, onResend }: { certificates: any[]; onResend: (id: string[]) => void }) {
+function FailedTable({ certificates, onResend, onViewError }: {
+    certificates: BatchDetails['failed'];
+    onResend: (ids: string[]) => void;
+    onViewError: (item: BatchDetails['failed'][0]) => void;
+}) {
     if (certificates.length === 0) {
         return <div className="text-center py-8 text-gray-500">No failed certificates</div>;
     }
@@ -308,8 +340,7 @@ function FailedTable({ certificates, onResend }: { certificates: any[]; onResend
             <table className="w-full text-sm text-left">
                 <thead className="bg-gray-50 text-gray-500 uppercase font-medium">
                     <tr>
-                        <th className="px-4 py-3">Name</th>
-                        <th className="px-4 py-3">Email</th>
+                        <th className="px-4 py-3">Recipient</th>
                         <th className="px-4 py-3">Error</th>
                         <th className="px-4 py-3">Type</th>
                         <th className="px-4 py-3">Action</th>
@@ -317,13 +348,20 @@ function FailedTable({ certificates, onResend }: { certificates: any[]; onResend
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                     {certificates.map((cert) => (
-                        <tr key={cert.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 font-medium text-gray-900">{cert.name}</td>
-                            <td className="px-4 py-3 text-gray-600">{cert.email}</td>
+                        <tr key={cert.id} className="hover:bg-gray-50 group">
+                            <td className="px-4 py-3 text-gray-600 font-medium">{cert.email}</td>
                             <td className="px-4 py-3">
-                                <div className="max-w-xs truncate text-red-600" title={cert.error}>
-                                    {cert.error}
-                                </div>
+                                <button
+                                    className="text-left w-full group-hover:bg-red-50 p-1.5 -ml-1.5 rounded transition-colors"
+                                    onClick={() => onViewError(cert)}
+                                >
+                                    <div className="max-w-xs truncate text-red-600 font-medium hover:text-red-700 underline-offset-2 hover:underline" title={cert.error}>
+                                        {cert.error}
+                                    </div>
+                                    <div className="text-xs text-gray-400 mt-0.5 truncate">
+                                        Click to view details
+                                    </div>
+                                </button>
                             </td>
                             <td className="px-4 py-3">
                                 <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${cert.canResend

@@ -25,6 +25,7 @@ export async function GET(
                             progress: true,
                             _count: {
                                 select: {
+
                                     certificates: true,
                                     failedCertificates: true,
                                 },
