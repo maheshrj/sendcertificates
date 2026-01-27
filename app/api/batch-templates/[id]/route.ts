@@ -24,7 +24,7 @@ function getUserIdFromRequest(request: Request): string | null {
 
 export async function DELETE(
     request: Request,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     const userId = getUserIdFromRequest(request);
     if (!userId) {
@@ -32,7 +32,7 @@ export async function DELETE(
     }
 
     try {
-        const { id } = params;
+        const { id } = await params;
 
         // Verify ownership
         const template = await prisma.batchTemplate.findUnique({
