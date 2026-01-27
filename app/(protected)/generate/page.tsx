@@ -11,12 +11,10 @@ import { EmailPreviewModal } from '@/app/components/EmailPreviewModal';
 
 
 
-interface CsvSummary {
-  columnNames: string[];
-  totalRows: number;
-  totalEmails: number;
-  invalidEmails: string[];
-}
+import { validateCsvFile, ValidationResult } from '@/app/lib/csv-validator';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { CheckCircle2, AlertTriangle, XCircle, Info } from "lucide-react";
+
 
 function TemplateSelector({ onSelect }: { onSelect: (template: Template | null) => void }) {
   const searchParams = useSearchParams();
@@ -134,7 +132,8 @@ export default function GeneratePage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [ccEmails, setCcEmails] = useState<string>('');
   const [batchName, setBatchName] = useState('');
-  const [csvSummary, setCsvSummary] = useState<CsvSummary | null>(null);
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
   const [isFormatGuideOpen, setIsFormatGuideOpen] = useState(false);
   const [bccEmails, setBccEmails] = useState<string>('');
 
@@ -179,65 +178,44 @@ export default function GeneratePage() {
   }, [user]);
   if (!user) return null;
 
-  const validateCsv = async (file: File) => {
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const text = event.target?.result as string;
-      const lines = text.split('\n');
-      const headers = lines[0].split(',').map(h => h.trim());
-      const rows = lines.slice(1).filter(line => line.trim());
+  const validateCsv = async (file: File, template: Template | null) => {
+    setIsValidating(true);
+    try {
+      const placeholders = template?.placeholders.map(p => p.name) || [];
+      const result = await validateCsvFile(file, placeholders);
 
-      // Extract sample row (first valid row) for preview
-      if (rows.length > 0) {
-        const firstRowValues = rows[0].split(',');
-        const sample: Record<string, string> = {};
-        headers.forEach((header, index) => {
-          // Basic mapping, assuming CSV is well-formed enough for preview
-          sample[header] = firstRowValues[index]?.trim() || '';
-        });
-        setSampleRow(sample);
+      setValidationResult(result);
+
+      // Update preview sample if available
+      if (result.preview && result.preview.length > 0) {
+        setSampleRow(result.preview[0]);
       } else {
         setSampleRow({});
       }
-
-      const emailIndex = headers.findIndex(h =>
-        h.toLowerCase() === 'email'
-      );
-
-      const invalidEmails: string[] = [];
-      let totalEmails = 0;
-
-      if (emailIndex !== -1) {
-        rows.forEach(row => {
-          const columns = row.split(',');
-          const email = columns[emailIndex]?.trim();
-          if (email) {
-            totalEmails++;
-            // Basic email validation
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailRegex.test(email)) {
-              invalidEmails.push(email);
-            }
-          }
-        });
-      }
-
-      setCsvSummary({
-        columnNames: headers,
-        totalRows: rows.length,
-        totalEmails,
-        invalidEmails
-      });
+    } catch (error) {
+      console.error('Validation failed:', error);
+      setDialogMessage('Failed to validate CSV file.');
       setIsDialogOpen(true);
-    };
-    reader.readAsText(file);
+    } finally {
+      setIsValidating(false);
+    }
   };
+
+  // Re-validate when template changes if file exists
+  useEffect(() => {
+    if (csvFile && selectedTemplate) {
+      validateCsv(csvFile, selectedTemplate);
+    } else if (csvFile && !selectedTemplate) {
+      // Validate without template requirements if none selected
+      validateCsv(csvFile, null);
+    }
+  }, [selectedTemplate]);
 
   const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setCsvFile(file);
-      validateCsv(file);
+      validateCsv(file, selectedTemplate);
     }
   };
 
@@ -375,36 +353,106 @@ export default function GeneratePage() {
           <p className="text-sm text-gray-600 mt-2">
             If your CSV contains an <strong>Email</strong> column, certificates will be sent to those addresses. <span className="text-red-600 font-medium">Make sure the csv does not have any other columns that contain confidential information.</span>
           </p>
-          {csvSummary && (
-            <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <h3 className="font-semibold text-gray-900 mb-3">CSV Summary</h3>
-              <div className="space-y-2 text-sm">
-                <p>Total Rows: {csvSummary.totalRows}</p>
-                <p>Columns: {csvSummary.columnNames.join(', ')}</p>
-                <p>Total Emails: {csvSummary.totalEmails}</p>
-                <p>Estimated Tokens Required: {csvSummary.totalRows * 1}</p>
+          <p className="text-sm text-gray-600 mt-2">
+            If your CSV contains an <strong>Email</strong> column, certificates will be sent to those addresses. <span className="text-red-600 font-medium">Make sure the csv does not have any other columns that contain confidential information.</span>
+          </p>
 
-                {csvSummary.invalidEmails.length > 0 && (
-                  <div className="mt-3">
-                    <p className="text-red-500 font-medium">
-                      ⚠️ Invalid Emails Found ({csvSummary.invalidEmails.length}):
-                    </p>
-                    <ul className="list-disc pl-5 mt-1 text-red-600">
-                      {csvSummary.invalidEmails.map((email, i) => (
-                        <li key={i}>{email}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+          {/* Validation Results UI */}
+          {isValidating && (
+            <div className="mt-4 p-4 text-gray-500 flex items-center">
+              <div className="animate-spin mr-2 h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+              Validating CSV...
+            </div>
+          )}
 
-                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-yellow-800">
-                  <p className="text-sm">
-                    <strong>Important:</strong> Please ensure all email addresses are correct.
-                    You are responsible for the accuracy of the email addresses provided.
-                    Invalid or incorrect email addresses may result in failed certificate delivery.
-                  </p>
+          {validationResult && !isValidating && (
+            <div className="mt-4 space-y-4">
+              {/* Status Header */}
+              {validationResult.isValid ? (
+                <Alert className="border-green-200 bg-green-50">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <AlertTitle className="text-green-800">CSV Validated Successfully</AlertTitle>
+                  <AlertDescription className="text-green-700">
+                    Found {validationResult.stats.validRows} valid recipients out of {validationResult.stats.totalRows} rows.
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Alert variant="destructive" className="bg-red-50 border-red-200">
+                  <XCircle className="h-4 w-4 text-red-600" />
+                  <AlertTitle className="text-red-800">Validation Errors Found</AlertTitle>
+                  <AlertDescription className="text-red-700">
+                    Please fix the critical errors below before proceeding.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Stats Summary */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div className="bg-gray-50 p-3 rounded border">
+                  <span className="block text-gray-500">Total Rows</span>
+                  <span className="font-semibold text-lg">{validationResult.stats.totalRows}</span>
+                </div>
+                <div className="bg-gray-50 p-3 rounded border">
+                  <span className="block text-gray-500">Emails Found</span>
+                  <span className="font-semibold text-lg">{validationResult.totalEmails}</span>
+                </div>
+                <div className="bg-gray-50 p-3 rounded border">
+                  <span className="block text-gray-500">Tokens Required</span>
+                  <span className="font-semibold text-lg text-blue-600">~{validationResult.stats.totalRows}</span>
+                </div>
+                <div className="bg-gray-50 p-3 rounded border">
+                  <span className="block text-gray-500">Columns</span>
+                  <span className="font-medium">{validationResult.headers.join(', ')}</span>
                 </div>
               </div>
+
+              {/* Error List */}
+              {validationResult.errors.length > 0 && (
+                <div className="border rounded-md overflow-hidden">
+                  <div className="bg-gray-100 px-4 py-2 border-b font-medium text-sm flex justify-between">
+                    <span>Validation Issues ({validationResult.errors.length})</span>
+                    {!validationResult.isValid && <span className="text-red-600 text-xs uppercase font-bold">Action Required</span>}
+                  </div>
+                  <div className="max-h-60 overflow-y-auto bg-white">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left w-20">Type</th>
+                          <th className="px-4 py-2 text-left">Message</th>
+                          <th className="px-4 py-2 text-left w-24">Location</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {validationResult.errors.map((err, i) => (
+                          <tr key={i} className={err.severity === 'error' ? 'bg-red-50' : 'bg-yellow-50'}>
+                            <td className="px-4 py-2 capitalize font-medium">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${err.severity === 'error' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
+                                }`}>
+                                {err.type.replace('_', ' ')}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 text-gray-700">{err.message}</td>
+                            <td className="px-4 py-2 text-gray-500">
+                              {err.row ? `Row ${err.row}` : 'Global'}
+                              {err.column && ` (${err.column})`}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {!selectedTemplate && validationResult.isValid && (
+                <Alert className="bg-blue-50 border-blue-200">
+                  <Info className="h-4 w-4 text-blue-600" />
+                  <AlertTitle className="text-blue-800">Select a Template</AlertTitle>
+                  <AlertDescription className="text-blue-700">
+                    Select a template to verify that your CSV columns match the certificate placeholders.
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
           )}
         </div>
@@ -412,7 +460,7 @@ export default function GeneratePage() {
           <button
             onClick={() => setShowPreview(true)}
             className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-50 mr-3"
-            disabled={!selectedTemplate || !csvFile || isLoading || !csvSummary?.totalRows}
+            disabled={!selectedTemplate || !csvFile || isLoading || !validationResult?.isValid || !validationResult?.stats.totalRows}
           >
             Preview Batch
           </button>
@@ -490,10 +538,10 @@ export default function GeneratePage() {
           </DialogHeader>
           <div className="space-y-4">
             <p>Are you sure you want to generate certificates for this batch?</p>
-            {csvSummary && (
+            {validationResult && (
               <div className="text-sm text-gray-600">
-                <p>• Total Recipients: {csvSummary.totalRows}</p>
-                <p>• Tokens Required: {csvSummary.totalRows * 1}</p>
+                <p>• Total Recipients: {validationResult.stats.totalRows}</p>
+                <p>• Tokens Required: {validationResult.stats.totalRows * 1}</p>
                 {ccEmails && <p>• CC Recipients: {ccEmails.split(',').filter(e => e.trim()).length}</p>}
                 {bccEmails && <p>• BCC Recipients: {bccEmails.split(',').filter(e => e.trim()).length}</p>}
               </div>

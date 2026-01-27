@@ -16,30 +16,62 @@ model FailedCertificate {
   batch     Batch    @relation(fields: [batchId], references: [id])
 }
 
+model FailedEmail {
+  id           String   @id @default(cuid())
+  batchId      String
+  batch        Batch    @relation(fields: [batchId], references: [id])
+  email        String
+  reason       String // "network_error", "s3_timeout", "bounce", "complaint", "unsubscribe"
+  category     String // "technical" or "compliance"
+  retryCount   Int      @default(0)
+  canResend    Boolean  @default(false)
+  errorDetails String? // JSON string with full error
+  createdAt    DateTime @default(now())
+
+  @@index([batchId])
+  @@index([category])
+}
+
 model Batch {
-  id                 String              @id @default(cuid())
-  name               String
-  creatorId          String
-  progress           Int                 @default(0)
-  failedCertificates FailedCertificate[]
-  creator            User                @relation(fields: [creatorId], references: [id])
-  certificates       Certificate[]
-  invalidEmails      InvalidEmail[]
-  createdAt          DateTime            @default(now())
+  id                      String              @id @default(cuid())
+  name                    String
+  creatorId               String
+  progress                Int                 @default(0)
+  failedCertificates      FailedCertificate[]
+  creator                 User                @relation(fields: [creatorId], references: [id])
+  certificates            Certificate[]
+  invalidEmails           InvalidEmail[]
+  createdAt               DateTime            @default(now())
+  ccCount                 Int                 @default(0)
+  bccCount                Int                 @default(0)
+  totalInCSV              Int                 @default(0)
+  totalSent               Int                 @default(0)
+  totalFailed             Int                 @default(0)
+  analysisStatus          String              @default("in_progress") // "in_progress", "completed"
+  estimatedCompletionTime DateTime?
+  isResend                Boolean             @default(false)
+  originalBatchId         String?
+  failedEmails            FailedEmail[]
+  tokenTransactions       TokenTransaction[]
 
   @@index([creatorId])
   @@index([creatorId, createdAt(sort: Desc)])
 }
 
 model TokenTransaction {
-  id        String   @id @default(cuid())
-  userId    String
-  amount    Int
-  type      String
-  reason    String
-  email     String
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
+  id           String   @id @default(cuid())
+  userId       String
+  amount       Int
+  type         String
+  reason       String
+  email        String
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id])
+  batchId      String?
+  batch        Batch?   @relation(fields: [batchId], references: [id])
+  refundReason String?
+
+  @@index([batchId])
 }
 
 model User {
@@ -106,6 +138,9 @@ model Certificate {
   creatorId         String
   creator           User      @relation(fields: [creatorId], references: [id])
   createdAt         DateTime  @default(now())
+  status            String    @default("pending") // "pending", "success", "failed", "retrying"
+  failureReason     String?
+  retryCount        Int       @default(0)
 
   @@index([batchId])
   @@index([creatorId])

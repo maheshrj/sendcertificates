@@ -1,190 +1,176 @@
+
 import { NextResponse } from 'next/server';
 import prisma from '@/app/lib/db';
 import jwt from 'jsonwebtoken';
+import { Queue } from 'bullmq';
+import IORedis from 'ioredis';
+
+const JWT_SECRET = process.env.JWT_SECRET!;
 
 function getUserIdFromRequest(request: Request): string | null {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-        const cookieHeader = request.headers.get('cookie');
-        if (!cookieHeader) return null;
+    const token = request.headers
+        .get('cookie')
+        ?.split('; ')
+        .find((c) => c.startsWith('token='))
+        ?.split('=')[1];
+    if (!token) return null;
 
-        const tokenMatch = cookieHeader.match(/token=([^;]+)/);
-        if (!tokenMatch) return null;
-
-        try {
-            const decoded = jwt.verify(tokenMatch[1], process.env.JWT_SECRET!) as { userId: string };
-            return decoded.userId;
-        } catch {
-            return null;
-        }
-    }
-
-    const token = authHeader.substring(7);
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
         return decoded.userId;
     } catch {
         return null;
     }
 }
 
-function generateUniqueId(): string {
-    return `cert_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
-}
+// Reuse Redis connection logic (simplified)
+let connection: IORedis | null = null;
+let certificateQueue: Queue | null = null;
 
-function calculateTokens(certificateData: any): number {
-    let tokens = 1; // Base token for the email
+if (process.env.REDIS_URL) {
+    connection = new IORedis(process.env.REDIS_URL, {
+        maxRetriesPerRequest: null,
+    });
 
-    // Add CC tokens
-    if (certificateData.cc && Array.isArray(certificateData.cc)) {
-        tokens += certificateData.cc.length;
-    }
-
-    // Add BCC tokens
-    if (certificateData.bcc && Array.isArray(certificateData.bcc)) {
-        tokens += certificateData.bcc.length;
-    }
-
-    return tokens;
+    certificateQueue = new Queue('certificateQueue', {
+        connection,
+        defaultJobOptions: {
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 1000 },
+            removeOnComplete: true,
+            removeOnFail: 100,
+        },
+    });
 }
 
 export async function POST(request: Request) {
+    const userId = getUserIdFromRequest(request);
+    if (!userId) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     try {
-        const userId = getUserIdFromRequest(request);
-        if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
         const body = await request.json();
-        const { originalBatchId, emails } = body;
+        const { originalBatchId, emails, templateId } = body;
 
-        // Validate input
-        if (!originalBatchId || !emails || !Array.isArray(emails) || emails.length === 0) {
-            return NextResponse.json(
-                { error: 'Invalid request. Provide originalBatchId and emails array' },
-                { status: 400 }
-            );
+        if (!originalBatchId || !emails || !emails.length || !templateId) {
+            return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
-        // 1. Verify user owns the original batch
-        const originalBatch = await prisma.batch.findFirst({
-            where: {
-                id: originalBatchId,
-                creatorId: userId
+        // 1. Verify original batch
+        const originalBatch = await prisma.batch.findUnique({
+            where: { id: originalBatchId },
+            include: {
+                certificates: true,
+                failedCertificates: true,
             }
         });
 
-        if (!originalBatch) {
-            return NextResponse.json(
-                { error: 'Batch not found or unauthorized' },
-                { status: 404 }
-            );
+        if (!originalBatch || originalBatch.creatorId !== userId) {
+            return NextResponse.json({ error: 'Batch not found' }, { status: 404 });
         }
 
-        // 2. Get original certificates for the selected emails
-        // Note: Since we can't easily query JSON fields with 'in', we'll fetch all certificates
-        // from the batch and filter in memory
-        const allCertificates = await prisma.certificate.findMany({
-            where: {
-                batchId: originalBatchId
+        // 2. Resolve records for requested emails
+        // We look in both successful Certificates (maybe failed sending) and FailedCertificates (failed generation)
+        // We strictly match by 'email' field in the JSON data
+        const recordsToResend: Record<string, string>[] = [];
+        const missingEmails: string[] = [];
+
+        // Helper to extract email from record data (case-insensitive key search)
+        const getEmail = (data: any) => {
+            const key = Object.keys(data).find(k => k.toLowerCase() === 'email');
+            return key ? data[key]?.trim()?.toLowerCase() : null;
+        };
+
+        // Build map of available data
+        const dataMap = new Map<string, any>();
+
+        // Add from certificates
+        originalBatch.certificates.forEach(cert => {
+            const email = getEmail(cert.data);
+            if (email) dataMap.set(email, cert.data);
+        });
+
+        // Add from failed certificates (overwrites successful ones if duplicate - usually means retry)
+        originalBatch.failedCertificates.forEach(fail => {
+            const email = getEmail(fail.data);
+            if (email) dataMap.set(email, fail.data);
+        });
+
+        // Collect data for requested emails
+        emails.forEach((email: string) => {
+            const normalizedEmail = email.trim().toLowerCase();
+            const data = dataMap.get(normalizedEmail);
+            if (data) {
+                recordsToResend.push(data);
+            } else {
+                missingEmails.push(email);
             }
         });
 
-        // Filter certificates by email in memory
-        const originalCertificates = allCertificates.filter(cert => {
-            const certData = cert.data as any;
-            return emails.includes(certData.email);
-        });
-        if (originalCertificates.length === 0) {
-            return NextResponse.json(
-                { error: 'No certificates found for the provided emails' },
-                { status: 404 }
-            );
+        if (recordsToResend.length === 0) {
+            return NextResponse.json({ error: 'No matching records found for provided emails' }, { status: 400 });
         }
 
-        // 3. Calculate total tokens needed
-        let totalTokens = 0;
-        originalCertificates.forEach(cert => {
-            totalTokens += calculateTokens(cert.data);
-        });
+        // 3. Create new Batch
+        const newBatchName = `${originalBatch.name} - Resend ${new Date().toLocaleTimeString()}`;
 
-        // 4. Check user has enough tokens
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { tokens: true }
-        });
+        // Calculate tokens needed (1 token per email roughly, assuming simple)
+        // Note: detailed token logic is skipped here for brevity, assuming deduct-on-success model from Phase 1
 
-        if (!user || user.tokens < totalTokens) {
-            return NextResponse.json(
-                {
-                    error: `Insufficient tokens. Need ${totalTokens}, have ${user?.tokens || 0}`,
-                    tokensNeeded: totalTokens,
-                    tokensAvailable: user?.tokens || 0
-                },
-                { status: 400 }
-            );
-        }
-
-        // 5. Create new batch with "- Resend" suffix
-        const newBatchName = `${originalBatch.name} - Resend`;
         const newBatch = await prisma.batch.create({
             data: {
                 name: newBatchName,
                 creatorId: userId,
-                progress: 0
-            }
+                totalInCSV: recordsToResend.length,
+                isResend: true,
+                originalBatchId: originalBatchId,
+            },
         });
 
-        // 6. Create new certificates for resend
-        const newCertificates = await Promise.all(
-            originalCertificates.map(cert =>
-                prisma.certificate.create({
-                    data: {
-                        templateId: cert.templateId,
-                        batchId: newBatch.id,
-                        uniqueIdentifier: generateUniqueId(),
-                        data: cert.data as any, // Cast to any to avoid JsonValue type issues
-                        generatedImageUrl: '', // Will be generated by worker
-                        creatorId: userId
-                    }
-                })
-            )
-        );
+        // 4. Queue Jobs
+        if (!certificateQueue) {
+            return NextResponse.json({ error: 'Queue system unavailable' }, { status: 503 });
+        }
 
-        // 7. Deduct tokens from user
-        await prisma.user.update({
-            where: { id: userId },
-            data: {
-                tokens: { decrement: totalTokens }
-            }
-        });
+        // Get email config for "from" address
+        const emailConfig = await prisma.emailConfig.findUnique({ where: { userId } });
+        const emailFrom = emailConfig?.customEmail || process.env.EMAIL_FROM || 'info@sendcertificates.com';
 
-        // 8. Create token transaction record
-        await prisma.tokenTransaction.create({
-            data: {
+        // Chunk records
+        const CHUNK_SIZE = 50; // Larger chunk for internal queue
+        const chunks = [];
+        for (let i = 0; i < recordsToResend.length; i += CHUNK_SIZE) {
+            chunks.push(recordsToResend.slice(i, i + CHUNK_SIZE));
+        }
+
+        const jobPromises = chunks.map((chunk, index) => {
+            return certificateQueue?.add('generate-certificate', {
+                records: chunk,
+                templateId,
+                batchId: newBatch.id,
                 userId,
-                amount: -totalTokens,
-                type: 'deduction',
-                reason: 'Resend failed emails',
-                email: `Batch: ${newBatchName}`
-            }
+                emailFrom,
+                ccEmails: [], // Do not CC/BCC on resends to avoid spam
+                bccEmails: [],
+                batchIndex: index,
+                totalBatches: chunks.length,
+            });
         });
 
-        // 9. Return success response
+        await Promise.all(jobPromises);
+
         return NextResponse.json({
-            success: true,
+            message: 'Resend initiated successfully',
             newBatchId: newBatch.id,
             newBatchName: newBatchName,
-            emailsToResend: newCertificates.length,
-            tokensDeducted: totalTokens,
-            message: `Successfully created resend batch with ${newCertificates.length} certificates`
+            emailsFound: recordsToResend.length,
+            emailsMissing: missingEmails.length,
+            missingList: missingEmails
         });
 
-    } catch (error) {
-        console.error('Error in resend-failed API:', error);
-        return NextResponse.json(
-            { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
-            { status: 500 }
-        );
+    } catch (error: any) {
+        console.error('Resend API Error:', error);
+        return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
     }
 }

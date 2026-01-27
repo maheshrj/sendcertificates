@@ -13,6 +13,7 @@ import IORedis from 'ioredis';
 import path from 'path';
 import { checkUserRateLimit } from '@/app/lib/rate-limiter';
 import { checkSESRateLimit } from '@/app/lib/ses-rate-limiter';
+import { categorizeError } from '@/app/lib/batch-utils';
 
 // ----------------------------------------
 // Font Registration (if you need custom fonts)
@@ -258,6 +259,26 @@ if (connection && emailQueue) {
         });
 
         logError(errorDetails);
+
+        // --- PHASE 3: Log to FailedEmail Table ---
+        const categorized = categorizeError(emailError.message || 'Unknown error');
+        await prisma.failedEmail.create({
+          data: {
+            batchId,
+            email,
+            reason: categorized.displayName || emailError.message,
+            category: categorized.canResend ? 'technical' : 'compliance',
+            retryCount: job.attemptsMade || 0,
+            canResend: categorized.canResend,
+            errorDetails: JSON.stringify({
+              message: emailError.message,
+              stack: emailError.stack,
+              timestamp: new Date().toISOString(),
+              details: errorDetails
+            }),
+          },
+        });
+        // ----------------------------------------
 
         // Throw error to trigger BullMQ retry
         throw new Error(`${errorDetails.category}: ${errorDetails.userMessage}`);
@@ -742,6 +763,30 @@ if (connection && certificateQueue) {
                   error: error.message,
                 },
               });
+
+              // --- PHASE 3: Log to FailedEmail if email exists ---
+              const emailKey = Object.keys(record).find((k) => k.toLowerCase() === 'email');
+              if (emailKey && record[emailKey]) {
+                const emailAddress = record[emailKey].trim();
+                const categorized = categorizeError(error.message || 'Generation failed');
+
+                await prisma.failedEmail.create({
+                  data: {
+                    batchId,
+                    email: emailAddress,
+                    reason: `Generation Failed: ${categorized.displayName}`,
+                    category: 'technical', // Generation failures are usually technical (S3, Canvas) and resendable
+                    retryCount: job.attemptsMade || 0,
+                    canResend: true,
+                    errorDetails: JSON.stringify({
+                      message: error.message,
+                      stack: error.stack,
+                      stage: 'certificate_generation'
+                    }),
+                  },
+                });
+              }
+              // ------------------------------------------------
             }
           })
         );
