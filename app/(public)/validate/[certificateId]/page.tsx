@@ -74,66 +74,69 @@ export default function ValidateCertificatePage() {
   };
 
   return (
-    <div className="min-h-screen p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-green-100 p-4 rounded-lg mb-8">
-        <div className="flex justify-between items-start">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-8">
+      <div className="max-w-3xl mx-auto">
+        <div className="bg-green-100 p-4 sm:p-6 rounded-lg mb-6 shadow-sm border border-green-200">
+          <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-green-800 mb-2">
-                ✅ Valid Certificate
+              <h1 className="text-xl sm:text-2xl font-bold text-green-800 mb-2 flex items-center gap-2">
+                <span className="text-2xl">✅</span> Valid Certificate
               </h1>
-              <p className="text-green-700">
+              <p className="text-green-700 text-sm sm:text-base">
                 This certificate was issued on{' '}
-                {new Date(certificate.createdAt).toLocaleDateString()}
+                <span className="font-semibold">{new Date(certificate.createdAt).toLocaleDateString()}</span>
               </p>
             </div>
             <Button
               onClick={handleDownload}
-              className="bg-green-700 hover:bg-green-800 text-white"
+              className="w-full sm:w-auto bg-green-700 hover:bg-green-800 text-white shadow-sm"
+              size="lg"
             >
-              <Download className="w-4 h-4 mr-2" />
-              Download
+              <Download className="w-5 h-5 mr-2" />
+              Download PDF
             </Button>
           </div>
         </div>
-        
 
-        <div className="bg-white shadow-lg rounded-lg overflow-hidden">
-          <div className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Certificate Details</h2>
-            <div className="grid gap-4">
-              <div>
-                <p className="text-gray-600">Certificate ID</p>
-                <p className="font-medium">{certificate.uniqueIdentifier}</p>
+        <div className="bg-white shadow-xl rounded-xl overflow-hidden border border-gray-100">
+          <div className="p-5 sm:p-8">
+            <h2 className="text-xl font-bold text-gray-900 mb-6 pb-2 border-b">Certificate Details</h2>
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div className="col-span-1 sm:col-span-2">
+                <p className="text-xs uppercase tracking-wider text-gray-500 font-semibold mb-1">Certificate ID</p>
+                <p className="font-mono text-sm sm:text-base bg-gray-50 p-2 rounded border border-gray-100 break-all">
+                  {certificate.uniqueIdentifier}
+                </p>
               </div>
 
               <div>
-                <p className="text-gray-600">Issued By</p>
-                <p className="font-medium">{certificate.creator.name}</p>
+                <p className="text-xs uppercase tracking-wider text-gray-500 font-semibold mb-1">Issued By</p>
+                <p className="font-medium text-gray-900 text-lg">{certificate.creator.name}</p>
                 {certificate.creator.organization && (
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-gray-500 font-medium">
                     {certificate.creator.organization}
                   </p>
                 )}
               </div>
-              
+
               {Object.entries(certificate.data).map(([key, value]) => (
                 <div key={key}>
-                  <p className="text-gray-600">{key}</p>
-                  <p className="font-medium">{value}</p>
+                  <p className="text-xs uppercase tracking-wider text-gray-500 font-semibold mb-1">{key}</p>
+                  <p className="font-medium text-gray-900 text-lg break-words">{value}</p>
                 </div>
               ))}
             </div>
           </div>
-          
-          <div className="border-t border-gray-200 p-6">
-            <h3 className="text-lg font-semibold mb-4">Certificate Image</h3>
-            <div className="relative w-full aspect-[1.414] bg-gray-100 rounded-lg overflow-hidden">
+
+          <div className="bg-gray-50 p-5 sm:p-8 border-t border-gray-200">
+            <h3 className="text-sm uppercase tracking-wider text-gray-500 font-semibold mb-3">Certificate Preview</h3>
+            <div className="relative w-full aspect-[1.414] bg-white rounded-lg overflow-hidden shadow-sm border border-gray-200">
               <Image
                 src={certificate.generatedImageUrl}
                 alt="Certificate"
                 fill
                 className="object-contain"
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
               />
             </div>
           </div>
