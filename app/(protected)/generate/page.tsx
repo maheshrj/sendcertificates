@@ -412,9 +412,7 @@ export default function GeneratePage() {
           <p className="text-sm text-gray-600 mt-2">
             If your CSV contains an <strong>Email</strong> column, certificates will be sent to those addresses. <span className="text-red-600 font-medium">Make sure the csv does not have any other columns that contain confidential information.</span>
           </p>
-          <p className="text-sm text-gray-600 mt-2">
-            If your CSV contains an <strong>Email</strong> column, certificates will be sent to those addresses. <span className="text-red-600 font-medium">Make sure the csv does not have any other columns that contain confidential information.</span>
-          </p>
+
 
           {/* Validation Results UI */}
           {isValidating && (
