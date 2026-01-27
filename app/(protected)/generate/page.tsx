@@ -177,7 +177,7 @@ export default function GeneratePage() {
       fetchTemplates();
     }
   }, [user]);
-  if (!user) return null;
+
 
   const validateCsv = async (file: File, template: Template | null) => {
     setIsValidating(true);
