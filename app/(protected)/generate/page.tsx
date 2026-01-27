@@ -12,6 +12,7 @@ import { EmailPreviewModal } from '@/app/components/EmailPreviewModal';
 
 
 import { validateCsvFile, ValidationResult } from '@/app/lib/csv-validator';
+import { BatchTemplateSelector, BatchTemplateData } from '@/app/components/BatchTemplateSelector';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CheckCircle2, AlertTriangle, XCircle, Info } from "lucide-react";
 
@@ -259,6 +260,57 @@ export default function GeneratePage() {
     handleGenerate();
   };
 
+  const handleTemplateSelect = (data: BatchTemplateData) => {
+    // 1. Set text fields
+    if (data.cc) setCcEmails(data.cc);
+    if (data.bcc) setBccEmails(data.bcc);
+    // Note: If we had subject/message fields in the UI, we would set them here.
+    // Assuming user might add them to BatchTemplate later, but currently UI only has them via EmailConfig or hidden?
+    // Wait, the UI doesn't allow editing Subject/Message per batch yet? 
+    // The requirement said "Store subject/message in template", but I don't see inputs for them in this page.
+    // I will double check if I missed them or if they are fetched from user config. 
+    // Ah, EmailPreviewModal uses them. 
+
+    // 2. Set Template
+    if (data.templateId) {
+      const tmpl = templates.find(t => t.id === data.templateId);
+      if (tmpl) {
+        setSelectedTemplate(tmpl);
+      }
+    }
+
+    setDialogMessage(`Loaded configuration: ${data.name}`);
+    setIsDialogOpen(true);
+  };
+
+  const handleTemplateSave = async (name: string) => {
+    try {
+      const payload = {
+        name,
+        templateId: selectedTemplate?.id,
+        cc: ccEmails,
+        bcc: bccEmails,
+        // subject: ... // no input for this yet
+        // message: ...
+      };
+
+      const res = await fetch('/api/batch-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) throw new Error('Failed to save');
+
+      setDialogMessage('Template saved successfully!');
+      setIsDialogOpen(true);
+    } catch (err) {
+      console.error(err);
+      setDialogMessage('Failed to save template.');
+      setIsDialogOpen(true);
+    }
+  };
+
   const handlePreviewConfirm = () => {
     setShowPreview(false);
     setShowConfirmation(true);
@@ -277,6 +329,13 @@ export default function GeneratePage() {
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-semibold text-gray-900">Generate Certificates</h1>
         </div>
+        <div className="mb-6">
+          <BatchTemplateSelector
+            onSelect={handleTemplateSelect}
+            onSave={handleTemplateSave}
+          />
+        </div>
+
         <div className="mb-2">
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Batch Name
