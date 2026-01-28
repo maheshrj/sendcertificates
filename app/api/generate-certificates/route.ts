@@ -131,6 +131,15 @@ if (process.env.REDIS_URL) {
     connection = null;
     emailQueue = null;
   }
+
+  // Initialize scheduler worker
+  if (connection) {
+    import('@/app/workers/scheduler').then(({ startScheduler }) => {
+      startScheduler();
+    }).catch((error) => {
+      console.error('❌ Failed to start scheduler:', error);
+    });
+  }
 } else {
   console.warn('⚠️ REDIS_URL not configured - queues will be disabled for generate-certificates');
 }

@@ -6,6 +6,7 @@ import { BatchList } from '@/app/components/BatchList';
 import { UserTokenHistory } from '@/app/components/UserTokenHistory';
 import { AnalyticsSummary } from '@/app/components/AnalyticsSummary';
 import { BounceAnalysis, Batch } from '@/app/components/BounceAnalysis';
+import { ScheduledBatchesList } from '@/app/components/ScheduledBatchesList';
 
 export default function AnalyticsPage() {
   const router = useRouter();
@@ -19,7 +20,7 @@ export default function AnalyticsPage() {
       try {
         setIsLoading(true);
         const res = await fetch('/api/me');
-        
+
         if (!res.ok) {
           throw new Error('Authentication required');
         }
@@ -31,7 +32,7 @@ export default function AnalyticsPage() {
         }
 
         setUser(data);
-        
+
         // Fetch batches
         const batchesRes = await fetch('/api/batches');
         if (!batchesRes.ok) {
@@ -74,16 +75,19 @@ export default function AnalyticsPage() {
   }
 
   if (!user) {
-    return null; 
+    return null;
   }
 
   return (
     <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       <div className="px-4 py-6 sm:px-0">
         <AnalyticsSummary />
-        
+
         <div className='my-10'>
           <BounceAnalysis batches={batches} />
+        </div>
+        <div className='my-10'>
+          <ScheduledBatchesList />
         </div>
         <div className='my-10'>
           <BatchList />

@@ -144,6 +144,11 @@ export default function GeneratePage() {
   const [showPreview, setShowPreview] = useState(false);
   const [sampleRow, setSampleRow] = useState<Record<string, string>>({});
 
+  // Scheduling State
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledDateTime, setScheduledDateTime] = useState('');
+
+
 
 
   // Check if the user is authenticated
@@ -220,6 +225,51 @@ export default function GeneratePage() {
     }
   };
 
+  const handleSchedule = async () => {
+    try {
+      if (csvFile && selectedTemplate) {
+        if (!scheduledDateTime) {
+          setDialogMessage('Please select a date and time for scheduling');
+          setIsDialogOpen(true);
+          return;
+        }
+
+        setIsLoading(true);
+        const formData = new FormData();
+        formData.append('csv', csvFile);
+        formData.append('templateId', selectedTemplate.id);
+        formData.append('ccEmails', ccEmails);
+        formData.append('bccEmails', bccEmails);
+        formData.append('batchName', batchName);
+        formData.append('scheduledAt', scheduledDateTime);
+
+        const response = await fetch('/api/scheduled-batches', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to schedule batch');
+        }
+
+        setDialogMessage(`Batch scheduled successfully for ${new Date(scheduledDateTime).toLocaleString()}!`);
+        setIsDialogOpen(true);
+
+        // Reset form
+        setCsvFile(null);
+        setBatchName('');
+        setScheduledDateTime('');
+      }
+    } catch (error) {
+      console.error('Error scheduling batch:', error);
+      setDialogMessage('Failed to schedule batch.');
+      setIsDialogOpen(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleGenerate = async () => {
     try {
       if (csvFile && selectedTemplate) {
@@ -257,7 +307,11 @@ export default function GeneratePage() {
 
   const handleConfirmGenerate = () => {
     setShowConfirmation(false);
-    handleGenerate();
+    if (isScheduled) {
+      handleSchedule();
+    } else {
+      handleGenerate();
+    }
   };
 
   const handleTemplateSelect = (data: BatchTemplateData) => {
@@ -513,6 +567,46 @@ export default function GeneratePage() {
             </div>
           )}
         </div>
+
+        {/* Scheduling Section */}
+        <div className="mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50">
+          <div className="flex items-center mb-4">
+            <input
+              type="checkbox"
+              id="schedule-toggle"
+              checked={isScheduled}
+              onChange={(e) => {
+                setIsScheduled(e.target.checked);
+                if (!e.target.checked) {
+                  setScheduledDateTime('');
+                }
+              }}
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            <label htmlFor="schedule-toggle" className="ml-2 block text-sm font-medium text-gray-700">
+              Schedule for Later
+            </label>
+          </div>
+
+          {isScheduled && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select Date and Time
+              </label>
+              <input
+                type="datetime-local"
+                value={scheduledDateTime}
+                onChange={(e) => setScheduledDateTime(e.target.value)}
+                min={new Date().toISOString().slice(0, 16)}
+                className="w-full p-2 border border-gray-300 text-black rounded focus:outline-1 focus:outline-blue-500"
+              />
+              <p className="text-sm text-gray-500 mt-2">
+                The batch will be automatically sent at the scheduled time.
+              </p>
+            </div>
+          )}
+        </div>
+
         <div className="flex justify-end">
           <button
             onClick={() => setShowPreview(true)}
@@ -524,9 +618,9 @@ export default function GeneratePage() {
           <button
             onClick={() => setShowConfirmation(true)}
             className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-            disabled={!selectedTemplate || !csvFile || isLoading}
+            disabled={!selectedTemplate || !csvFile || isLoading || (isScheduled && !scheduledDateTime)}
           >
-            {isLoading ? 'Generating...' : 'Generate Certificates'}
+            {isLoading ? (isScheduled ? 'Scheduling...' : 'Generating...') : (isScheduled ? 'Schedule Batch' : 'Generate Certificates')}
           </button>
         </div>
       </div>
