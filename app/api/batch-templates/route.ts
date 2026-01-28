@@ -37,6 +37,14 @@ export async function GET(request: Request) {
                         id: true,
                         name: true
                     }
+                },
+                emailTemplate: {
+                    select: {
+                        id: true,
+                        name: true,
+                        subject: true,
+                        body: true
+                    }
                 }
             },
             orderBy: { createdAt: 'desc' }
@@ -57,9 +65,9 @@ export async function POST(request: Request) {
 
     try {
         const body = await request.json();
-        const { name, description, templateId, cc, bcc, subject, message } = body;
+        const { name, description, templateId, cc, bcc, subject, message, emailTemplateId } = body;
 
-        console.log('Creating batch template:', { name, templateId, cc, bcc });
+        console.log('Creating batch template:', { name, templateId, cc, bcc, emailTemplateId });
 
         if (!name || !name.trim()) {
             return NextResponse.json({ error: 'Template name is required' }, { status: 400 });
@@ -74,7 +82,8 @@ export async function POST(request: Request) {
                 cc: cc || null,
                 bcc: bcc || null,
                 subject: subject || null,
-                message: message || null
+                message: message || null,
+                emailTemplateId: emailTemplateId || null
             }
         });
 

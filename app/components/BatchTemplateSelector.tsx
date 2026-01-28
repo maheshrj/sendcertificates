@@ -14,6 +14,13 @@ export interface BatchTemplateData {
     bcc?: string | null;
     subject?: string | null;
     message?: string | null;
+    emailTemplateId?: string | null;
+    emailTemplate?: {
+        id: string;
+        name: string;
+        subject: string;
+        body: string;
+    } | null;
 }
 
 interface BatchTemplateSelectorProps {

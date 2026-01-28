@@ -65,14 +65,14 @@ export function Navbar() {
       const response = await fetch('/api/logout', {
         method: 'POST',
       });
-        if (!response.ok) {
+      if (!response.ok) {
         throw new Error('Failed to logout');
       }
       localStorage.removeItem('user');
-        
+
       setIsAdmin(false);
       setTokens(0);
-        
+
       router.push('/login');
     } catch (error) {
       console.error('Error during logout:', error);
@@ -122,6 +122,14 @@ export function Navbar() {
                 Email
               </Link>
               <Link
+                href="/emails"
+                className={
+                  currentPath === '/emails' ? activeClassName : inactiveClassName
+                }
+              >
+                Email Templates
+              </Link>
+              <Link
                 href="/analytics"
                 className={
                   currentPath === '/analytics' ? activeClassName : inactiveClassName
@@ -130,15 +138,15 @@ export function Navbar() {
                 Analytics
               </Link>
               {isApiEnabled && (
-               <Link
-                 href="/api-keys"
-                 className={
-                   currentPath === '/api-keys' ? activeClassName : inactiveClassName
-                 }
-               >
-                 API Keys
-               </Link>
-             )}
+                <Link
+                  href="/api-keys"
+                  className={
+                    currentPath === '/api-keys' ? activeClassName : inactiveClassName
+                  }
+                >
+                  API Keys
+                </Link>
+              )}
               {isAdmin && (
                 <Link
                   href="/dashboard"
@@ -249,6 +257,15 @@ export function Navbar() {
             Email
           </Link>
           <Link
+            href="/emails"
+            onClick={handleMobileLinkClick}
+            className={
+              currentPath === '/emails' ? mobileActiveClassName : mobileInactiveClassName
+            }
+          >
+            Email Templates
+          </Link>
+          <Link
             href="/analytics"
             onClick={handleMobileLinkClick}
             className={
@@ -258,16 +275,16 @@ export function Navbar() {
             Analytics
           </Link>
           {isApiEnabled && (
-           <Link
-             href="/api-keys"
-             onClick={handleMobileLinkClick}
-             className={
-               currentPath === '/api-keys' ? mobileActiveClassName : mobileInactiveClassName
-             }
-           >
-             API Keys
-           </Link>
-         )}
+            <Link
+              href="/api-keys"
+              onClick={handleMobileLinkClick}
+              className={
+                currentPath === '/api-keys' ? mobileActiveClassName : mobileInactiveClassName
+              }
+            >
+              API Keys
+            </Link>
+          )}
           {isAdmin && (
             <Link
               href="/dashboard"

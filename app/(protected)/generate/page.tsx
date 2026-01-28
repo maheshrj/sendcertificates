@@ -346,14 +346,9 @@ export default function GeneratePage() {
     // 1. Set text fields
     if (data.cc) setCcEmails(data.cc);
     if (data.bcc) setBccEmails(data.bcc);
-    // Note: If we had subject/message fields in the UI, we would set them here.
-    // Assuming user might add them to BatchTemplate later, but currently UI only has them via EmailConfig or hidden?
-    // Wait, the UI doesn't allow editing Subject/Message per batch yet? 
-    // The requirement said "Store subject/message in template", but I don't see inputs for them in this page.
-    // I will double check if I missed them or if they are fetched from user config. 
-    // Ah, EmailPreviewModal uses them. 
+    console.log('Loading batch template:', data);
 
-    // 2. Set Template
+    // Load certificate template
     if (data.templateId) {
       const tmpl = templates.find(t => t.id === data.templateId);
       if (tmpl) {
@@ -361,8 +356,18 @@ export default function GeneratePage() {
       }
     }
 
-    setDialogMessage(`Loaded configuration: ${data.name}`);
-    setIsDialogOpen(true);
+    // Load email template
+    if (data.emailTemplateId && data.emailTemplate) {
+      setSelectedEmailTemplateId(data.emailTemplateId);
+      setSelectedEmailTemplate(data.emailTemplate);
+    } else {
+      setSelectedEmailTemplateId('');
+      setSelectedEmailTemplate(null);
+    }
+
+    // Load other fields
+    setCcEmails(data.cc || '');
+    setBccEmails(data.bcc || '');
   };
 
   const handleTemplateSave = async (name: string) => {
@@ -372,8 +377,7 @@ export default function GeneratePage() {
         templateId: selectedTemplate?.id,
         cc: ccEmails,
         bcc: bccEmails,
-        // subject: ... // no input for this yet
-        // message: ...
+        emailTemplateId: selectedEmailTemplateId || null
       };
 
       const res = await fetch('/api/batch-templates', {
