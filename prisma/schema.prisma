@@ -70,6 +70,7 @@ model TokenTransaction {
   batchId      String?
   batch        Batch?   @relation(fields: [batchId], references: [id])
   refundReason String?
+  status       String?  // Keep for backward compatibility with production data
 
   @@index([batchId])
 }
