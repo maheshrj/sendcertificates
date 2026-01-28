@@ -148,9 +148,10 @@ export default function GeneratePage() {
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledDateTime, setScheduledDateTime] = useState('');
 
-  // Email Content State
-  const [emailSubject, setEmailSubject] = useState('');
-  const [emailBody, setEmailBody] = useState('');
+  // Email Template State
+  const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
+  const [selectedEmailTemplateId, setSelectedEmailTemplateId] = useState('');
+  const [selectedEmailTemplate, setSelectedEmailTemplate] = useState<any>(null);
 
 
 
@@ -184,6 +185,24 @@ export default function GeneratePage() {
         }
       };
       fetchTemplates();
+    }
+  }, [user]);
+
+  // Fetch email templates
+  useEffect(() => {
+    if (user) {
+      const fetchEmailTemplates = async () => {
+        try {
+          const response = await fetch('/api/email-templates');
+          if (response.ok) {
+            const data = await response.json();
+            setEmailTemplates(data);
+          }
+        } catch (error) {
+          console.error('Error fetching email templates:', error);
+        }
+      };
+      fetchEmailTemplates();
     }
   }, [user]);
 
@@ -450,36 +469,43 @@ export default function GeneratePage() {
           />
         </div>
 
-        {/* Email Section */}
-        <div className="mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Email Content</h3>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Email Subject
-            </label>
-            <input
-              type="text"
-              value={emailSubject}
-              onChange={(e) => setEmailSubject(e.target.value)}
-              placeholder="Enter email subject (e.g., Your {{Course}} Certificate)"
-              className="w-full p-2 border border-gray-300 text-black rounded focus:outline-1 focus:outline-blue-500"
-            />
+        {/* Email Template Selector */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Email Template *
+          </label>
+          <div className="flex gap-2">
+            <select
+              value={selectedEmailTemplateId}
+              onChange={(e) => {
+                setSelectedEmailTemplateId(e.target.value);
+                const template = emailTemplates.find(t => t.id === e.target.value);
+                setSelectedEmailTemplate(template || null);
+              }}
+              className="flex-1 p-2 border border-gray-300 text-black rounded focus:outline-1 focus:outline-blue-500"
+            >
+              <option value="">-- Select Email Template --</option>
+              {emailTemplates.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => window.open('/emails', '_blank')}
+              className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50 text-sm font-medium text-gray-700"
+              type="button"
+            >
+              Manage Templates
+            </button>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Email Body
-            </label>
-            <textarea
-              value={emailBody}
-              onChange={(e) => setEmailBody(e.target.value)}
-              placeholder="Enter email message (e.g., Dear {{Name}}, Congratulations on completing {{Course}}!)"
-              rows={6}
-              className="w-full p-2 border border-gray-300 text-black rounded focus:outline-1 focus:outline-blue-500"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              You can use placeholders like {`{{Name}}`}, {`{{Course}}`}, etc. from your CSV
-            </p>
-          </div>
+          {selectedEmailTemplate && (
+            <div className="mt-3 p-3 bg-gray-50 rounded border border-gray-200 text-sm">
+              <p className="font-medium text-gray-900 mb-1">Subject: {selectedEmailTemplate.subject}</p>
+              <p className="text-gray-600 line-clamp-3">{selectedEmailTemplate.body}</p>
+            </div>
+          )}
+          {!selectedEmailTemplateId && (
+            <p className="text-xs text-red-600 mt-1">Please select an email template before generating certificates</p>
+          )}
         </div>
 
         <div className="mb-6">
@@ -764,8 +790,8 @@ export default function GeneratePage() {
           onOpenChange={setShowPreview}
           template={selectedTemplate}
           sampleData={sampleRow}
-          emailSubject={emailSubject}
-          emailBody={emailBody}
+          emailSubject={selectedEmailTemplate?.subject || ''}
+          emailBody={selectedEmailTemplate?.body || ''}
           onConfirm={handlePreviewConfirm}
         />
       )}
