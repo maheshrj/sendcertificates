@@ -100,6 +100,7 @@ model User {
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
   batchTemplates          BatchTemplate[]
+  scheduledBatches        ScheduledBatch[]
 }
 
 model Template {
@@ -117,6 +118,7 @@ model Template {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   batchTemplates BatchTemplate[]
+  scheduledBatches ScheduledBatch[]
 }
 
 model InvalidEmail {
@@ -237,4 +239,32 @@ model BatchTemplate {
   updatedAt   DateTime @updatedAt
   
   @@index([userId])
+}
+
+model ScheduledBatch {
+  id          String   @id @default(cuid())
+  name        String
+  templateId  String
+  template    Template @relation(fields: [templateId], references: [id])
+  
+  csvFileUrl  String   // S3 URL to stored CSV
+  
+  cc          String?
+  bcc         String?
+  subject     String?
+  message     String?
+  
+  scheduledAt DateTime
+  status      String   @default("pending") // pending, processing, completed, failed, cancelled
+  
+  creatorId   String
+  creator     User     @relation(fields: [creatorId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  error       String?
+  
+  @@index([creatorId])
+  @@index([status, scheduledAt]) 
 }
