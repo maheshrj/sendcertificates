@@ -25,7 +25,7 @@ function getUserIdFromRequest(request: Request): string | null {
 // GET: Retrieve a single email template
 export async function GET(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const userId = getUserIdFromRequest(request);
@@ -34,9 +34,11 @@ export async function GET(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        const { id } = await params;
+
         const template = await prisma.emailTemplate.findFirst({
             where: {
-                id: params.id,
+                id,
                 userId,
             },
         });
@@ -61,7 +63,7 @@ export async function GET(
 // PUT: Update an email template
 export async function PUT(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const userId = getUserIdFromRequest(request);
@@ -70,10 +72,12 @@ export async function PUT(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        const { id } = await params;
+
         // Verify ownership
         const existingTemplate = await prisma.emailTemplate.findFirst({
             where: {
-                id: params.id,
+                id,
                 userId,
             },
         });
@@ -118,7 +122,7 @@ export async function PUT(
         }
 
         const updatedTemplate = await prisma.emailTemplate.update({
-            where: { id: params.id },
+            where: { id },
             data: {
                 name,
                 subject,
@@ -139,7 +143,7 @@ export async function PUT(
 // DELETE: Remove an email template
 export async function DELETE(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const userId = getUserIdFromRequest(request);
@@ -148,10 +152,12 @@ export async function DELETE(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        const { id } = await params;
+
         // Verify ownership
         const existingTemplate = await prisma.emailTemplate.findFirst({
             where: {
-                id: params.id,
+                id,
                 userId,
             },
         });
@@ -164,7 +170,7 @@ export async function DELETE(
         }
 
         await prisma.emailTemplate.delete({
-            where: { id: params.id },
+            where: { id },
         });
 
         return NextResponse.json({ message: 'Template deleted successfully' });
