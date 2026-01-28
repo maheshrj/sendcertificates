@@ -152,6 +152,7 @@ export async function POST(
                 name: newBatchName,
                 creatorId: userId,
                 progress: 0,
+                totalInCSV: records.length,
             }
         });
 

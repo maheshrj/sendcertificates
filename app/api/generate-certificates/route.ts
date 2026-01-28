@@ -242,6 +242,18 @@ if (connection && emailQueue) {
 
         await transporter.sendMail(mailOptions);
         console.log(`✅ Email sent successfully to ${email} for batch ${batchId}`);
+
+        // Update Batch stats
+        await prisma.batch.update({
+          where: { id: batchId },
+          data: { totalSent: { increment: 1 } }
+        });
+
+        // Update Batch stats
+        await prisma.batch.update({
+          where: { id: batchId },
+          data: { totalSent: { increment: 1 } }
+        });
       } catch (emailError: any) {
         // Enhanced error logging with categorization
         const { createErrorDetails, logError } = await import('@/app/lib/error-handler');
@@ -279,6 +291,12 @@ if (connection && emailQueue) {
           },
         });
         // ----------------------------------------
+
+        // Update Batch stats
+        await prisma.batch.update({
+          where: { id: batchId },
+          data: { totalFailed: { increment: 1 } }
+        });
 
         // Throw error to trigger BullMQ retry
         throw new Error(`${errorDetails.category}: ${errorDetails.userMessage}`);
@@ -525,7 +543,10 @@ async function generateCertificateImage(
   // Update the certificate record with the final URL
   const updatedCertificate = await prisma.certificate.update({
     where: { id: certificate.id },
-    data: { generatedImageUrl: certificateUrl },
+    data: {
+      generatedImageUrl: certificateUrl,
+      status: 'success'
+    },
   });
 
   return { certificateUrl, certificate: updatedCertificate };
