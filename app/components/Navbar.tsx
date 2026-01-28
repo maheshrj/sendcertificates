@@ -122,14 +122,6 @@ export function Navbar() {
                 Email
               </Link>
               <Link
-                href="/emails"
-                className={
-                  currentPath === '/emails' ? activeClassName : inactiveClassName
-                }
-              >
-                Email Templates
-              </Link>
-              <Link
                 href="/analytics"
                 className={
                   currentPath === '/analytics' ? activeClassName : inactiveClassName
@@ -255,15 +247,6 @@ export function Navbar() {
             }
           >
             Email
-          </Link>
-          <Link
-            href="/emails"
-            onClick={handleMobileLinkClick}
-            className={
-              currentPath === '/emails' ? mobileActiveClassName : mobileInactiveClassName
-            }
-          >
-            Email Templates
           </Link>
           <Link
             href="/analytics"

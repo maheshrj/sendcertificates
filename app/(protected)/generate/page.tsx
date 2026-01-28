@@ -493,13 +493,6 @@ export default function GeneratePage() {
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </select>
-            <button
-              onClick={() => window.open('/emails', '_blank')}
-              className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50 text-sm font-medium text-gray-700"
-              type="button"
-            >
-              Manage Templates
-            </button>
           </div>
           {selectedEmailTemplate && (
             <div className="mt-3 p-3 bg-gray-50 rounded border border-gray-200 text-sm">

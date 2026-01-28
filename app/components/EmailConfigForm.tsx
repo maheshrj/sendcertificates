@@ -6,8 +6,8 @@ import Image from 'next/image';
 import { MessageEditor } from './MessageEditor'
 
 export default function EmailConfigForm() {
-  const [emailConfig, setEmailConfig] = useState({ 
-    defaultSubject: '', 
+  const [emailConfig, setEmailConfig] = useState({
+    defaultSubject: '',
     defaultMessage: '',
     logoUrl: '',
     emailHeading: '',
@@ -19,16 +19,23 @@ export default function EmailConfigForm() {
   const [dialogMessage, setDialogMessage] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [variablePreview, setVariablePreview] = useState<string>('');
-  const [isFetchingConfig, setIsFetchingConfig] = useState(true); 
+  const [isFetchingConfig, setIsFetchingConfig] = useState(true);
   const [subjectPreview, setSubjectPreview] = useState<string>('');
   const [subjectHtml, setSubjectHtml] = useState('');
+
+  // Email Template Management
+  const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('new');
+  const [isSaveTemplateModalOpen, setIsSaveTemplateModalOpen] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
 
   // Skeleton loader component
   function EmailConfigSkeleton() {
     return (
       <div className="bg-white shadow-md rounded p-6 animate-pulse">
         <div className="h-6 bg-gray-300 rounded w-48 mb-4"></div>
-        
+
         <div className="mb-6">
           <div className="block text-sm font-medium text-gray-700 mb-2 h-4 bg-gray-300 w-20"></div>
           <div className="w-48 h-24 bg-gray-200 rounded mb-4"></div>
@@ -108,6 +115,22 @@ export default function EmailConfigForm() {
     fetchEmailConfig();
   }, []);
 
+  // Fetch email templates
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      try {
+        const response = await fetch('/api/email-templates');
+        if (response.ok) {
+          const data = await response.json();
+          setEmailTemplates(data);
+        }
+      } catch (error) {
+        console.error('Error fetching email templates:', error);
+      }
+    };
+    fetchTemplates();
+  }, []);
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -148,6 +171,98 @@ export default function EmailConfigForm() {
     return data.imageUrl;
   };
 
+  // Template Management Functions
+  const handleTemplateSelect = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+
+    if (templateId === 'new') {
+      // Clear fields for new template
+      setEmailConfig(prev => ({
+        ...prev,
+        defaultSubject: '',
+        defaultMessage: ''
+      }));
+    } else {
+      // Load selected template
+      const template = emailTemplates.find(t => t.id === templateId);
+      if (template) {
+        setEmailConfig(prev => ({
+          ...prev,
+          defaultSubject: template.subject,
+          defaultMessage: template.body
+        }));
+      }
+    }
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!templateName.trim()) {
+      setDialogMessage('Please enter a template name');
+      setIsDialogOpen(true);
+      return;
+    }
+
+    try {
+      setIsSavingTemplate(true);
+      const response = await fetch('/api/email-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: templateName,
+          subject: emailConfig.defaultSubject,
+          body: emailConfig.defaultMessage
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save template');
+      }
+
+      const newTemplate = await response.json();
+      setEmailTemplates(prev => [...prev, newTemplate]);
+      setSelectedTemplateId(newTemplate.id);
+      setTemplateName('');
+      setIsSaveTemplateModalOpen(false);
+      setDialogMessage('Template saved successfully!');
+      setIsDialogOpen(true);
+    } catch (error) {
+      console.error('Error saving template:', error);
+      setDialogMessage('Failed to save template');
+      setIsDialogOpen(true);
+    } finally {
+      setIsSavingTemplate(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    if (!confirm('Are you sure you want to delete this template?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/email-templates/${templateId}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete template');
+      }
+
+      setEmailTemplates(prev => prev.filter(t => t.id !== templateId));
+      if (selectedTemplateId === templateId) {
+        setSelectedTemplateId('new');
+      }
+      setDialogMessage('Template deleted successfully');
+      setIsDialogOpen(true);
+    } catch (error) {
+      console.error('Error deleting template:', error);
+      setDialogMessage('Failed to delete template');
+      setIsDialogOpen(true);
+    }
+  };
+
   const handleSave = async () => {
     try {
       setIsLoading(true);
@@ -159,7 +274,7 @@ export default function EmailConfigForm() {
         .map(v => v.slice(1, -1));
 
       const invalidVariables = allVariables.filter(v => !v.match(/^[A-Za-z][A-Za-z0-9_]*$/));
-      
+
       if (invalidVariables.length > 0) {
         throw new Error(`Invalid variable format: ${invalidVariables.join(', ')}. Variables should contain only letters, numbers, and underscores, and start with a letter.`);
       }
@@ -171,7 +286,7 @@ export default function EmailConfigForm() {
 
       const response = await fetch('/api/email-config', {
         method: 'PUT',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -276,6 +391,47 @@ export default function EmailConfigForm() {
         />
       </div>
 
+      {/* Email Template Dropdown */}
+      <div className="mb-6">
+        <div className="flex justify-between items-center mb-2">
+          <label className="block text-sm font-medium text-gray-700">
+            Email Template
+          </label>
+          <button
+            type="button"
+            onClick={() => setIsSaveTemplateModalOpen(true)}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+          >
+            + Save as Template
+          </button>
+        </div>
+        <select
+          value={selectedTemplateId}
+          onChange={(e) => handleTemplateSelect(e.target.value)}
+          className="w-full p-2 border border-gray-300 rounded focus:outline-1 focus:outline-blue-500"
+        >
+          <option value="new">New Template</option>
+          {emailTemplates.map((template) => (
+            <option key={template.id} value={template.id}>
+              {template.name}
+            </option>
+          ))}
+        </select>
+
+        {/* Delete button for selected template */}
+        {selectedTemplateId !== 'new' && (
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={(e) => handleDeleteTemplate(selectedTemplateId, e)}
+              className="text-sm text-red-600 hover:text-red-800"
+            >
+              🗑️ Delete this template
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">
           Email Subject
@@ -304,7 +460,7 @@ export default function EmailConfigForm() {
         <div className="space-y-2">
           <MessageEditor
             value={emailConfig.defaultMessage}
-            onChange={(html) => 
+            onChange={(html) =>
               setEmailConfig(prev => ({ ...prev, defaultMessage: html }))
             }
           />
@@ -328,7 +484,47 @@ export default function EmailConfigForm() {
         </button>
       </div>
 
-      <FeedbackDialog 
+      {/* Save Template Modal */}
+      {isSaveTemplateModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Save as Template</h3>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Template Name
+              </label>
+              <input
+                type="text"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded focus:outline-1 focus:outline-blue-500"
+                placeholder="e.g., Course Completion Email"
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setIsSaveTemplateModalOpen(false);
+                  setTemplateName('');
+                }}
+                className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveTemplate}
+                disabled={isSavingTemplate || !templateName.trim()}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400"
+              >
+                {isSavingTemplate ? 'Saving...' : 'Save Template'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <FeedbackDialog
         isOpen={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         message={dialogMessage}
