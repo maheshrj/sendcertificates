@@ -156,6 +156,7 @@ async function processScheduledBatch(scheduledBatch: any) {
 async function runScheduler() {
     try {
         const now = new Date();
+        console.log(`🕐 Scheduler running at: ${now.toISOString()} (${now.toLocaleString()})`);
 
         // Find all pending batches that are due
         const dueBatches = await prisma.scheduledBatch.findMany({
@@ -172,6 +173,10 @@ async function runScheduler() {
 
         if (dueBatches.length > 0) {
             console.log(`📅 Found ${dueBatches.length} scheduled batch(es) due for execution`);
+
+            dueBatches.forEach(batch => {
+                console.log(`  - Batch: ${batch.name}, Scheduled: ${batch.scheduledAt.toISOString()} (${batch.scheduledAt.toLocaleString()})`);
+            });
 
             // Process each batch sequentially to avoid overwhelming the system
             for (const batch of dueBatches) {

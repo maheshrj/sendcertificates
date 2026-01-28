@@ -235,13 +235,18 @@ export default function GeneratePage() {
         }
 
         setIsLoading(true);
+
+        // Convert local datetime to ISO string for proper timezone handling
+        const scheduledDate = new Date(scheduledDateTime);
+        const scheduledISO = scheduledDate.toISOString();
+
         const formData = new FormData();
         formData.append('csv', csvFile);
         formData.append('templateId', selectedTemplate.id);
         formData.append('ccEmails', ccEmails);
         formData.append('bccEmails', bccEmails);
         formData.append('batchName', batchName);
-        formData.append('scheduledAt', scheduledDateTime);
+        formData.append('scheduledAt', scheduledISO); // Send ISO string instead of local datetime
 
         const response = await fetch('/api/scheduled-batches', {
           method: 'POST',
@@ -253,7 +258,7 @@ export default function GeneratePage() {
           throw new Error(data.error || 'Failed to schedule batch');
         }
 
-        setDialogMessage(`Batch scheduled successfully for ${new Date(scheduledDateTime).toLocaleString()}!`);
+        setDialogMessage(`Batch scheduled successfully for ${scheduledDate.toLocaleString()}!`);
         setIsDialogOpen(true);
 
         // Reset form

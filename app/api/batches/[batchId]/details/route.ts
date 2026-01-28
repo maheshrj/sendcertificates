@@ -29,6 +29,8 @@ export async function GET(
                         data: true,
                         createdAt: true,
                         templateId: true,
+                        generatedImageUrl: true,
+                        uniqueIdentifier: true,
                     },
                     orderBy: {
                         createdAt: 'desc'
@@ -66,11 +68,17 @@ export async function GET(
         // Process completed certificates
         const completed = batch.certificates.map(cert => {
             const data = cert.data as any;
+            // Try multiple field name variations to extract name and email
+            const name = data.Name || data.name || data.recipientName || data.RecipientName || 'N/A';
+            const email = data.Email || data.email || data.recipientEmail || data.RecipientEmail || 'N/A';
+
             return {
                 id: cert.id,
-                name: data.name || data.recipientName || 'N/A',
-                email: data.email || data.recipientEmail || 'N/A',
+                name,
+                email,
                 sentAt: cert.createdAt,
+                downloadUrl: cert.generatedImageUrl,
+                certificateId: cert.uniqueIdentifier,
             };
         });
 
@@ -79,10 +87,14 @@ export async function GET(
             const data = failed.data as any;
             const errorCategory = categorizeError(failed.error);
 
+            // Try multiple field name variations
+            const name = data.Name || data.name || data.recipientName || data.RecipientName || 'N/A';
+            const email = data.Email || data.email || data.recipientEmail || data.RecipientEmail || 'N/A';
+
             return {
                 id: failed.id,
-                name: data.name || data.recipientName || 'N/A',
-                email: data.email || data.recipientEmail || 'N/A',
+                name,
+                email,
                 error: failed.error,
                 errorType: errorCategory.type,
                 errorDisplayName: errorCategory.displayName,

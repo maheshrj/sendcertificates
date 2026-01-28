@@ -103,7 +103,7 @@ export default function TemplatesPage() {
                 <img
                   src={template.imageUrl}
                   alt={template.name}
-                  className="w-full h-48 object-cover rounded"
+                  className="w-full h-48 object-contain rounded bg-gray-50"
                 />
                 <h2 className="text-lg text-gray-600 font-semibold mt-2">{template.name}</h2>
                 <p className="text-gray-600">

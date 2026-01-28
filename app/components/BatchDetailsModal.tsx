@@ -366,6 +366,7 @@ function CompletedTable({ certificates }: { certificates: any[] }) {
                         <th className="px-4 py-3">Email</th>
                         <th className="px-4 py-3">Sent At</th>
                         <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3">Download</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -381,6 +382,21 @@ function CompletedTable({ certificates }: { certificates: any[] }) {
                                     <CheckCircle className="w-3 h-3 mr-1" />
                                     Sent
                                 </span>
+                            </td>
+                            <td className="px-4 py-3">
+                                {cert.downloadUrl ? (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => window.open(cert.downloadUrl, '_blank')}
+                                        className="h-8 text-xs"
+                                    >
+                                        <Download className="w-3 h-3 mr-1" />
+                                        Download
+                                    </Button>
+                                ) : (
+                                    <span className="text-xs text-gray-400">N/A</span>
+                                )}
                             </td>
                         </tr>
                     ))}

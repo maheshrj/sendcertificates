@@ -59,26 +59,32 @@ export async function POST(request: Request) {
         const body = await request.json();
         const { name, description, templateId, cc, bcc, subject, message } = body;
 
-        if (!name) {
+        console.log('Creating batch template:', { name, templateId, cc, bcc });
+
+        if (!name || !name.trim()) {
             return NextResponse.json({ error: 'Template name is required' }, { status: 400 });
         }
 
         const newTemplate = await prisma.batchTemplate.create({
             data: {
                 userId,
-                name,
-                description,
+                name: name.trim(),
+                description: description || null,
                 templateId: templateId || null,
-                cc,
-                bcc,
-                subject,
-                message
+                cc: cc || null,
+                bcc: bcc || null,
+                subject: subject || null,
+                message: message || null
             }
         });
 
+        console.log('Batch template created successfully:', newTemplate.id);
         return NextResponse.json(newTemplate, { status: 201 });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error creating batch template:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({
+            error: 'Failed to create template',
+            details: error.message
+        }, { status: 500 });
     }
 }

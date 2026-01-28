@@ -56,19 +56,25 @@ export async function GET(
     return acc;
   }, {} as Record<string, number>);
 
+  // Calculate accurate counts from actual certificate statuses
+  const actualTotalSent = certStats['success'] || 0;
+  const actualTotalFailed = certStats['failed'] || 0;
+  const actualTotalPending = certStats['pending'] || 0;
+
   return NextResponse.json({
     batch: {
       id: batch.id,
       name: batch.name,
       totalInCSV: batch.totalInCSV,
-      totalSent: batch.totalSent,
-      totalFailed: batch.totalFailed,
+      totalSent: actualTotalSent, // Use calculated value instead of batch.totalSent
+      totalFailed: actualTotalFailed, // Use calculated value instead of batch.totalFailed
       analysisStatus: batch.analysisStatus,
       estimatedCompletionTime: batch.estimatedCompletionTime,
       createdAt: batch.createdAt,
     },
     failedEmails: {
       technical: technical.map(f => ({
+        id: f.id, // Add id for resend functionality
         email: f.email,
         reason: f.reason,
         retryCount: f.retryCount,
@@ -83,9 +89,9 @@ export async function GET(
     },
     certificates: {
       total: batch.certificates.length,
-      success: certStats['success'] || 0,
-      failed: certStats['failed'] || 0,
-      pending: certStats['pending'] || 0,
+      success: actualTotalSent,
+      failed: actualTotalFailed,
+      pending: actualTotalPending,
     },
   });
 }

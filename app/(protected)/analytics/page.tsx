@@ -32,19 +32,23 @@ export default function AnalyticsPage() {
         }
 
         setUser(data);
+        setIsLoading(false);
 
-        // Fetch batches
-        const batchesRes = await fetch('/api/batches');
-        if (!batchesRes.ok) {
-          throw new Error('Failed to fetch batches');
-        }
-        const batchesData = await batchesRes.json();
-        // Extract the batches array from the response
-        setBatches(batchesData.batches || []);
+        // Defer batch loading to improve initial page load
+        setTimeout(async () => {
+          try {
+            const batchesRes = await fetch('/api/batches');
+            if (batchesRes.ok) {
+              const batchesData = await batchesRes.json();
+              setBatches(batchesData.batches || []);
+            }
+          } catch (err) {
+            console.error('Failed to fetch batches:', err);
+          }
+        }, 100);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to authenticate');
         router.push('/login');
-      } finally {
         setIsLoading(false);
       }
     };
