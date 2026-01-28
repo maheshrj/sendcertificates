@@ -11,6 +11,9 @@ import { Button } from '@/components/ui/button';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { ResendConfirmationModal } from './ResendConfirmationModal';
 import { ErrorDetailsModal } from './ErrorDetailsModal';
+import { BatchAnalyticsReport } from './reports/BatchAnalyticsReport';
+import { generatePDF } from '@/app/lib/pdf-generator';
+import { FileText, Download } from 'lucide-react';
 
 interface BatchDetailsModalProps {
     batchId: string | null;
@@ -72,6 +75,9 @@ export function BatchDetailsModal({ batchId, open, onOpenChange }: BatchDetailsM
 
     // Error Details State
     const [selectedErrorItem, setSelectedErrorItem] = useState<BatchDetails['failed'][0] | null>(null);
+
+    // Export State
+    const [isExporting, setIsExporting] = useState(false);
 
     useEffect(() => {
         if (open && batchId) {
@@ -162,6 +168,22 @@ export function BatchDetailsModal({ batchId, open, onOpenChange }: BatchDetailsM
         }
     };
 
+    const handleExportPDF = async () => {
+        if (!data) return;
+        setIsExporting(true);
+        try {
+            await generatePDF({
+                filename: `${data.batch.name.replace(/\s+/g, '_')}_Report.pdf`,
+                elementId: 'batch-analytics-report'
+            });
+        } catch (error) {
+            console.error('Export failed:', error);
+            alert('Failed to generate PDF report');
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     if (!open) return null;
 
     return (
@@ -173,11 +195,29 @@ export function BatchDetailsModal({ batchId, open, onOpenChange }: BatchDetailsM
                             <span className="text-xl font-bold">
                                 {loading ? 'Loading Batch...' : data?.batch.name || 'Batch Details'}
                             </span>
-                            {data && (
-                                <span className="text-sm font-normal text-muted-foreground">
-                                    {new Date(data.batch.createdAt).toLocaleString()}
-                                </span>
-                            )}
+                            <div className="flex items-center gap-2">
+                                {data && (
+                                    <>
+                                        <span className="text-sm font-normal text-muted-foreground mr-2">
+                                            {new Date(data.batch.createdAt).toLocaleString()}
+                                        </span>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleExportPDF}
+                                            disabled={isExporting}
+                                            className="h-8"
+                                        >
+                                            {isExporting ? (
+                                                <div className="animate-spin mr-2 h-3 w-3 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                                            ) : (
+                                                <FileText className="w-4 h-4 mr-2" />
+                                            )}
+                                            Export PDF
+                                        </Button>
+                                    </>
+                                )}
+                            </div>
                         </DialogTitle>
                     </DialogHeader>
 
@@ -282,6 +322,30 @@ export function BatchDetailsModal({ batchId, open, onOpenChange }: BatchDetailsM
                     email={selectedErrorItem.email}
                     id={selectedErrorItem.id}
                     onRetry={handleRetrySingle}
+                />
+            )}
+
+            {data && (
+                <BatchAnalyticsReport
+                    batchName={data.batch.name}
+                    createdAt={data.batch.createdAt}
+                    stats={{
+                        total: data.stats.total,
+                        success: data.stats.completed,
+                        failed: data.stats.failed,
+                        pending: data.stats.total - (data.stats.completed + data.stats.failed + data.stats.invalid)
+                    }}
+                    failedEmails={{
+                        technical: data.failed.filter(f => f.canResend).map(f => ({
+                            email: f.email,
+                            reason: f.error,
+                            retryCount: 0 // BatchDetails doesn't have retryCount yet, would need API update or ignore
+                        })),
+                        compliance: data.failed.filter(f => !f.canResend).map(f => ({
+                            email: f.email,
+                            reason: f.error
+                        }))
+                    }}
                 />
             )}
         </>
