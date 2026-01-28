@@ -63,14 +63,17 @@ export async function generateMetadata({ params }: { params: Promise<{ certifica
   const issueDate = new Date(certificate?.createdAt || Date.now());
   const formattedDate = issueDate.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
 
-  let linkedInDescription = `I'm happy to share that I have received`;
+  // Build LinkedIn description (minimum 100 characters required by LinkedIn)
+  let linkedInDescription = `I'm excited to share that I have successfully completed`;
   if (courseName) {
-    linkedInDescription += ` ${courseName}`;
+    linkedInDescription += ` the ${courseName} certification`;
+  } else {
+    linkedInDescription += ` my certification`;
   }
   if (organizationName) {
     linkedInDescription += ` from ${organizationName}`;
   }
-  linkedInDescription += ` on ${formattedDate}.`;
+  linkedInDescription += ` on ${formattedDate}. This achievement represents my commitment to continuous learning and professional development.`;
 
   console.log('📊 LinkedIn Metadata:');
   console.log('  Course:', courseName || '(none)');
