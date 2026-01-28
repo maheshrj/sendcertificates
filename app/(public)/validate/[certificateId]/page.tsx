@@ -47,8 +47,9 @@ async function getCertificate(certificateId: string): Promise<Certificate | null
   }
 }
 
-export async function generateMetadata({ params }: { params: { certificateId: string } }): Promise<Metadata> {
-  const certificate = await getCertificate(params.certificateId);
+export async function generateMetadata({ params }: { params: Promise<{ certificateId: string }> }): Promise<Metadata> {
+  const { certificateId } = await params;
+  const certificate = await getCertificate(certificateId);
 
   if (!certificate) {
     return {
@@ -101,8 +102,9 @@ export async function generateMetadata({ params }: { params: { certificateId: st
   };
 }
 
-export default async function ValidateCertificatePage({ params }: { params: { certificateId: string } }) {
-  const certificate = await getCertificate(params.certificateId);
+export default async function ValidateCertificatePage({ params }: { params: Promise<{ certificateId: string }> }) {
+  const { certificateId } = await params;
+  const certificate = await getCertificate(certificateId);
 
   if (!certificate) {
     notFound();
