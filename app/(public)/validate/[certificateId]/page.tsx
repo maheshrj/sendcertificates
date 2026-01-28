@@ -72,6 +72,11 @@ export async function generateMetadata({ params }: { params: Promise<{ certifica
   }
   linkedInDescription += ` on ${formattedDate}.`;
 
+  console.log('📊 LinkedIn Metadata:');
+  console.log('  Course:', courseName || '(none)');
+  console.log('  Org:', organizationName);
+  console.log('  Description:', linkedInDescription);
+
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   const validationUrl = `${baseUrl}/validate/${certificate.uniqueIdentifier}`;
 
