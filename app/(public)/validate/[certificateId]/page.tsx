@@ -99,7 +99,11 @@ export async function generateMetadata({ params }: { params: Promise<{ certifica
           alt: `Certificate for ${recipientName}`,
         },
       ],
-      type: 'website',
+      type: 'article',
+      article: {
+        publishedTime: certificate.createdAt.toISOString(),
+        authors: [certificate.creator.name],
+      },
     },
     twitter: {
       card: 'summary_large_image',
