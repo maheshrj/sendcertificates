@@ -80,21 +80,36 @@ export default function ValidateCertificatePage() {
     window.open(linkedInUrl, '_blank', 'width=600,height=600');
   };
 
-  // Generate meta tags for LinkedIn preview
+  // Extract certificate details for meta tags
   const recipientName = certificate?.data?.Name || certificate?.data?.name || certificate?.data?.recipientName || 'Certificate Holder';
+  const courseName = certificate?.data?.Course || certificate?.data?.course || certificate?.data?.CourseName || certificate?.data?.courseName || '';
+  const organizationName = certificate?.creator?.organization || certificate?.creator?.name || '';
+  const issueDate = new Date(certificate?.createdAt || Date.now());
+  const formattedDate = issueDate.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+
+  // Build LinkedIn-friendly description
+  let linkedInDescription = `I'm happy to share that I have received`;
+  if (courseName) {
+    linkedInDescription += ` ${courseName}`;
+  }
+  if (organizationName) {
+    linkedInDescription += ` from ${organizationName}`;
+  }
+  linkedInDescription += ` on ${formattedDate}.`;
+
   const validationUrl = typeof window !== 'undefined' ? `${window.location.origin}/validate/${certificate?.uniqueIdentifier}` : '';
 
   return (
     <>
       <Head>
         <meta property="og:title" content={`Certificate - ${recipientName}`} />
-        <meta property="og:description" content={`View ${recipientName}'s certificate issued by ${certificate?.creator.name}`} />
+        <meta property="og:description" content={linkedInDescription} />
         <meta property="og:image" content={certificate?.generatedImageUrl} />
         <meta property="og:url" content={validationUrl} />
         <meta property="og:type" content="website" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={`Certificate - ${recipientName}`} />
-        <meta name="twitter:description" content={`View ${recipientName}'s certificate`} />
+        <meta name="twitter:description" content={linkedInDescription} />
         <meta name="twitter:image" content={certificate?.generatedImageUrl} />
       </Head>
       <div className="min-h-screen bg-gray-50 p-3 sm:p-6 md:p-8">
