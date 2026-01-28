@@ -647,9 +647,14 @@ Unsubscribe from certificate emails: ${unsubscribeUrl}
           
           <!-- Download Button -->
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${certificateUrl}" style="display: inline-block; background-color: #007BFF; color: #ffffff; text-decoration: none; padding: 14px 30px; border-radius: 5px; font-size: 16px; font-weight: bold;">
+            <a href="${certificateUrl}" style="display: inline-block; background-color: #007BFF; color: #ffffff; text-decoration: none; padding: 14px 30px; border-radius: 5px; font-size: 16px; font-weight: bold; margin: 0 5px;">
               Download Certificate
             </a>
+            ${validationUrl ? `
+            <a href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(validationUrl)}" style="display: inline-block; background-color: #0A66C2; color: #ffffff; text-decoration: none; padding: 14px 30px; border-radius: 5px; font-size: 16px; font-weight: bold; margin: 0 5px;">
+              Share on LinkedIn
+            </a>
+            ` : ''}
           </div>
           
           ${validationUrl ? `
