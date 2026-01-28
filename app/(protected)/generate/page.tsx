@@ -148,6 +148,10 @@ export default function GeneratePage() {
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledDateTime, setScheduledDateTime] = useState('');
 
+  // Email Content State
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+
 
 
 
@@ -727,8 +731,8 @@ export default function GeneratePage() {
           onOpenChange={setShowPreview}
           template={selectedTemplate}
           sampleData={sampleRow}
-          emailSubject={user?.emailConfig?.defaultSubject}
-          emailBody={user?.emailConfig?.defaultMessage}
+          emailSubject={emailSubject}
+          emailBody={emailBody}
           onConfirm={handlePreviewConfirm}
         />
       )}
