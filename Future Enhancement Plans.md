@@ -1,5 +1,22 @@
 # Future Enhancement Plans
 
+## LinkedIn Share Credibility Enhancement
+
+**Goal**: Improve LinkedIn share credibility by implementing custom share button with pre-filled post text.
+
+**Reference**: [How to make a custom LinkedIn share button - Stack Overflow](https://stackoverflow.com/questions/10713542/how-to-make-a-custom-linkedin-share-button)
+
+**Current Limitation**: LinkedIn doesn't display Open Graph descriptions for application domains, resulting in posts showing only the certificate image and title without the personalized achievement message.
+
+**Proposed Solution**: 
+- Implement custom LinkedIn share button with pre-filled text parameter
+- Or add "Copy Post Text" button to copy personalized message to clipboard
+- Users can paste the message when sharing for full context
+
+**Priority**: Medium (current implementation is functional, this would enhance user experience)
+
+---
+
 ## Overview
 This document outlines potential future enhancements for the certificate management system. These features were identified during development but deferred to keep the current release focused and production-ready.
 
