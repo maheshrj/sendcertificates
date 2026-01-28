@@ -449,6 +449,39 @@ export default function GeneratePage() {
             className="w-full p-2 border border-gray-300 text-black rounded mb-4 focus:outline-1 focus:outline-blue-500"
           />
         </div>
+
+        {/* Email Section */}
+        <div className="mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">Email Content</h3>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Email Subject
+            </label>
+            <input
+              type="text"
+              value={emailSubject}
+              onChange={(e) => setEmailSubject(e.target.value)}
+              placeholder="Enter email subject (e.g., Your {{Course}} Certificate)"
+              className="w-full p-2 border border-gray-300 text-black rounded focus:outline-1 focus:outline-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Email Body
+            </label>
+            <textarea
+              value={emailBody}
+              onChange={(e) => setEmailBody(e.target.value)}
+              placeholder="Enter email message (e.g., Dear {{Name}}, Congratulations on completing {{Course}}!)"
+              rows={6}
+              className="w-full p-2 border border-gray-300 text-black rounded focus:outline-1 focus:outline-blue-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              You can use placeholders like {`{{Name}}`}, {`{{Course}}`}, etc. from your CSV
+            </p>
+          </div>
+        </div>
+
         <div className="mb-6">
           <div className="flex justify-between items-center">
             <label className="block text-sm font-medium text-gray-700 mb-2">
