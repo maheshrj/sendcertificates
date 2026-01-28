@@ -3,6 +3,7 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Download, Linkedin } from 'lucide-react';
 import { notFound } from 'next/navigation';
+import prisma from '@/app/lib/db';
 
 type Certificate = {
   id: string;
@@ -20,16 +21,26 @@ type Certificate = {
 
 async function getCertificate(certificateId: string): Promise<Certificate | null> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    const response = await fetch(`${baseUrl}/api/validate/${certificateId}`, {
-      cache: 'no-store', // Always fetch fresh data for certificates
+    const certificate = await prisma.certificate.findFirst({
+      where: {
+        uniqueIdentifier: certificateId,
+      },
+      include: {
+        creator: {
+          select: {
+            name: true,
+            organization: true,
+            email: true
+          }
+        }
+      },
     });
 
-    if (!response.ok) {
+    if (!certificate) {
       return null;
     }
 
-    return await response.json();
+    return certificate as Certificate;
   } catch (error) {
     console.error('Error fetching certificate:', error);
     return null;
