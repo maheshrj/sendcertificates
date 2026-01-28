@@ -1,12 +1,10 @@
-'use client';
-
-import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { Metadata } from 'next';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Download, Linkedin } from 'lucide-react';
+import { notFound } from 'next/navigation';
 
-export type Certificate = {
+type Certificate = {
   id: string;
   templateId: string;
   uniqueIdentifier: string;
@@ -20,123 +18,39 @@ export type Certificate = {
   };
 };
 
-export default function ValidateCertificatePage() {
-  const { certificateId } = useParams();
-  const [certificate, setCertificate] = useState<Certificate | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+async function getCertificate(certificateId: string): Promise<Certificate | null> {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const response = await fetch(`${baseUrl}/api/validate/${certificateId}`, {
+      cache: 'no-store', // Always fetch fresh data for certificates
+    });
 
-  useEffect(() => {
-    const fetchCertificate = async () => {
-      try {
-        const response = await fetch(`/api/validate/${certificateId}`);
-        if (!response.ok) {
-          throw new Error('Certificate not found');
-        }
-        const data = await response.json();
-        setCertificate(data);
-      } catch (err) {
-        setError('Invalid or expired certificate');
-      } finally {
-        setLoading(false);
-      }
+    if (!response.ok) {
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching certificate:', error);
+    return null;
+  }
+}
+
+export async function generateMetadata({ params }: { params: { certificateId: string } }): Promise<Metadata> {
+  const certificate = await getCertificate(params.certificateId);
+
+  if (!certificate) {
+    return {
+      title: 'Certificate Not Found',
     };
-
-    fetchCertificate();
-  }, [certificateId]);
-
-  // Update meta tags dynamically for LinkedIn sharing
-  useEffect(() => {
-    if (certificate) {
-      const recipientName = certificate?.data?.Name || certificate?.data?.name || certificate?.data?.recipientName || 'Certificate Holder';
-      const courseName = certificate?.data?.Course || certificate?.data?.course || certificate?.data?.CourseName || certificate?.data?.courseName || '';
-      const organizationName = certificate?.creator?.organization || certificate?.creator?.name || '';
-      const issueDate = new Date(certificate?.createdAt || Date.now());
-      const formattedDate = issueDate.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
-
-      let linkedInDescription = `I'm happy to share that I have received`;
-      if (courseName) {
-        linkedInDescription += ` ${courseName}`;
-      }
-      if (organizationName) {
-        linkedInDescription += ` from ${organizationName}`;
-      }
-      linkedInDescription += ` on ${formattedDate}.`;
-
-      const validationUrl = `${window.location.origin}/validate/${certificate.uniqueIdentifier}`;
-
-      // Update document title
-      document.title = `Certificate - ${recipientName}`;
-
-      // Helper function to update or create meta tag
-      const updateMetaTag = (property: string, content: string, isName = false) => {
-        const attribute = isName ? 'name' : 'property';
-        let element = document.querySelector(`meta[${attribute}="${property}"]`);
-        if (!element) {
-          element = document.createElement('meta');
-          element.setAttribute(attribute, property);
-          document.head.appendChild(element);
-        }
-        element.setAttribute('content', content);
-      };
-
-      // Update Open Graph tags
-      updateMetaTag('og:title', `Certificate - ${recipientName}`);
-      updateMetaTag('og:description', linkedInDescription);
-      updateMetaTag('og:image', certificate.generatedImageUrl);
-      updateMetaTag('og:url', validationUrl);
-      updateMetaTag('og:type', 'website');
-
-      // Update Twitter Card tags
-      updateMetaTag('twitter:card', 'summary_large_image', true);
-      updateMetaTag('twitter:title', `Certificate - ${recipientName}`, true);
-      updateMetaTag('twitter:description', linkedInDescription, true);
-      updateMetaTag('twitter:image', certificate.generatedImageUrl, true);
-    }
-  }, [certificate]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4">Validating certificate...</p>
-        </div>
-      </div>
-    );
   }
 
-  if (error || !certificate || !certificate.creator) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center text-red-600">
-          <h1 className="text-2xl font-bold mb-4">❌ Invalid Certificate</h1>
-          <p>{error || 'Certificate not found'}</p>
-        </div>
-      </div>
-    );
-  }
-
-  const handleDownload = () => {
-    if (certificate?.generatedImageUrl) {
-      window.open(certificate.generatedImageUrl, '_blank');
-    }
-  };
-
-  const handleLinkedInShare = () => {
-    const validationUrl = `${window.location.origin}/validate/${certificate?.uniqueIdentifier}`;
-    const linkedInUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(validationUrl)}`;
-    window.open(linkedInUrl, '_blank', 'width=600,height=600');
-  };
-
-  // Extract certificate details for meta tags
   const recipientName = certificate?.data?.Name || certificate?.data?.name || certificate?.data?.recipientName || 'Certificate Holder';
   const courseName = certificate?.data?.Course || certificate?.data?.course || certificate?.data?.CourseName || certificate?.data?.courseName || '';
   const organizationName = certificate?.creator?.organization || certificate?.creator?.name || '';
   const issueDate = new Date(certificate?.createdAt || Date.now());
   const formattedDate = issueDate.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
 
-  // Build LinkedIn-friendly description
   let linkedInDescription = `I'm happy to share that I have received`;
   if (courseName) {
     linkedInDescription += ` ${courseName}`;
@@ -146,7 +60,45 @@ export default function ValidateCertificatePage() {
   }
   linkedInDescription += ` on ${formattedDate}.`;
 
-  const validationUrl = typeof window !== 'undefined' ? `${window.location.origin}/validate/${certificate?.uniqueIdentifier}` : '';
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  const validationUrl = `${baseUrl}/validate/${certificate.uniqueIdentifier}`;
+
+  return {
+    title: `Certificate - ${recipientName}`,
+    description: linkedInDescription,
+    openGraph: {
+      title: `Certificate - ${recipientName}`,
+      description: linkedInDescription,
+      url: validationUrl,
+      siteName: 'SendCertificates',
+      images: [
+        {
+          url: certificate.generatedImageUrl,
+          width: 1200,
+          height: 630,
+          alt: `Certificate for ${recipientName}`,
+        },
+      ],
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `Certificate - ${recipientName}`,
+      description: linkedInDescription,
+      images: [certificate.generatedImageUrl],
+    },
+  };
+}
+
+export default async function ValidateCertificatePage({ params }: { params: { certificateId: string } }) {
+  const certificate = await getCertificate(params.certificateId);
+
+  if (!certificate) {
+    notFound();
+  }
+
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  const validationUrl = `${baseUrl}/validate/${certificate.uniqueIdentifier}`;
 
   return (
     <div className="min-h-screen bg-gray-50 p-3 sm:p-6 md:p-8">
@@ -163,22 +115,32 @@ export default function ValidateCertificatePage() {
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              <Button
-                onClick={handleDownload}
-                className="w-full sm:w-auto bg-green-700 hover:bg-green-800 text-white shadow-sm flex-shrink-0"
-                size="lg"
+              <a
+                href={certificate.generatedImageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
               >
-                <Download className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-                Download PDF
-              </Button>
-              <Button
-                onClick={handleLinkedInShare}
-                className="w-full sm:w-auto bg-[#0A66C2] hover:bg-[#004182] text-white shadow-sm flex-shrink-0"
-                size="lg"
+                <Button
+                  className="w-full sm:w-auto bg-green-700 hover:bg-green-800 text-white shadow-sm flex-shrink-0"
+                  size="lg"
+                >
+                  <Download className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                  Download PDF
+                </Button>
+              </a>
+              <a
+                href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(validationUrl)}`}
+                target="_blank"
+                rel="noopener noreferrer"
               >
-                <Linkedin className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-                Share on LinkedIn
-              </Button>
+                <Button
+                  className="w-full sm:w-auto bg-[#0A66C2] hover:bg-[#004182] text-white shadow-sm flex-shrink-0"
+                  size="lg"
+                >
+                  <Linkedin className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                  Share on LinkedIn
+                </Button>
+              </a>
             </div>
           </div>
         </div>
