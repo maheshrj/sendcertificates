@@ -1,38 +1,51 @@
 // API route for getting, updating, and deleting individual email templates
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/lib/prisma';
-import { getServerSession } from 'next-auth/next';
+import jwt from 'jsonwebtoken';
 
-// GET: Get a single email template
+const JWT_SECRET = process.env.JWT_SECRET!;
+
+function getUserIdFromRequest(request: Request): string | null {
+    const token = request.headers
+        .get("cookie")
+        ?.split("; ")
+        .find((c) => c.startsWith("token="))
+        ?.split("=")[1];
+
+    if (!token) return null;
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        return decoded.userId;
+    } catch {
+        return null;
+    }
+}
+
+// GET: Retrieve a single email template
 export async function GET(
     request: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
+    { params }: { params: { id: string } }
 ) {
     try {
-        const { id } = await params;
-        const session = await getServerSession();
+        const userId = getUserIdFromRequest(request);
 
-        if (!session || !session.user?.email) {
+        if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        const user = await prisma.user.findUnique({
-            where: { email: session.user.email },
-        });
-
-        if (!user) {
-            return NextResponse.json({ error: 'User not found' }, { status: 404 });
         }
 
         const template = await prisma.emailTemplate.findFirst({
             where: {
-                id,
-                userId: user.id,
+                id: params.id,
+                userId,
             },
         });
 
         if (!template) {
-            return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+            return NextResponse.json(
+                { error: 'Template not found' },
+                { status: 404 }
+            );
         }
 
         return NextResponse.json(template);
@@ -48,34 +61,28 @@ export async function GET(
 // PUT: Update an email template
 export async function PUT(
     request: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
+    { params }: { params: { id: string } }
 ) {
     try {
-        const { id } = await params;
-        const session = await getServerSession();
+        const userId = getUserIdFromRequest(request);
 
-        if (!session || !session.user?.email) {
+        if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const user = await prisma.user.findUnique({
-            where: { email: session.user.email },
-        });
-
-        if (!user) {
-            return NextResponse.json({ error: 'User not found' }, { status: 404 });
-        }
-
-        // Check if template exists and belongs to user
+        // Verify ownership
         const existingTemplate = await prisma.emailTemplate.findFirst({
             where: {
-                id,
-                userId: user.id,
+                id: params.id,
+                userId,
             },
         });
 
         if (!existingTemplate) {
-            return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+            return NextResponse.json(
+                { error: 'Template not found' },
+                { status: 404 }
+            );
         }
 
         const body = await request.json();
@@ -111,7 +118,7 @@ export async function PUT(
         }
 
         const updatedTemplate = await prisma.emailTemplate.update({
-            where: { id },
+            where: { id: params.id },
             data: {
                 name,
                 subject,
@@ -129,41 +136,35 @@ export async function PUT(
     }
 }
 
-// DELETE: Delete an email template
+// DELETE: Remove an email template
 export async function DELETE(
     request: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
+    { params }: { params: { id: string } }
 ) {
     try {
-        const { id } = await params;
-        const session = await getServerSession();
+        const userId = getUserIdFromRequest(request);
 
-        if (!session || !session.user?.email) {
+        if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const user = await prisma.user.findUnique({
-            where: { email: session.user.email },
-        });
-
-        if (!user) {
-            return NextResponse.json({ error: 'User not found' }, { status: 404 });
-        }
-
-        // Check if template exists and belongs to user
+        // Verify ownership
         const existingTemplate = await prisma.emailTemplate.findFirst({
             where: {
-                id,
-                userId: user.id,
+                id: params.id,
+                userId,
             },
         });
 
         if (!existingTemplate) {
-            return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+            return NextResponse.json(
+                { error: 'Template not found' },
+                { status: 404 }
+            );
         }
 
         await prisma.emailTemplate.delete({
-            where: { id },
+            where: { id: params.id },
         });
 
         return NextResponse.json({ message: 'Template deleted successfully' });

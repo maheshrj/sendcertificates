@@ -1,27 +1,38 @@
 // API route for listing and creating email templates
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/lib/prisma';
-import { getServerSession } from 'next-auth/next';
+import jwt from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET!;
+
+function getUserIdFromRequest(request: Request): string | null {
+    const token = request.headers
+        .get("cookie")
+        ?.split("; ")
+        .find((c) => c.startsWith("token="))
+        ?.split("=")[1];
+
+    if (!token) return null;
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        return decoded.userId;
+    } catch {
+        return null;
+    }
+}
 
 // GET: List all email templates for the current user
 export async function GET(request: NextRequest) {
     try {
-        const session = await getServerSession();
+        const userId = getUserIdFromRequest(request);
 
-        if (!session || !session.user?.email) {
+        if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const user = await prisma.user.findUnique({
-            where: { email: session.user.email },
-        });
-
-        if (!user) {
-            return NextResponse.json({ error: 'User not found' }, { status: 404 });
-        }
-
         const templates = await prisma.emailTemplate.findMany({
-            where: { userId: user.id },
+            where: { userId },
             orderBy: { updatedAt: 'desc' },
         });
 
@@ -38,18 +49,10 @@ export async function GET(request: NextRequest) {
 // POST: Create a new email template
 export async function POST(request: NextRequest) {
     try {
-        const session = await getServerSession();
+        const userId = getUserIdFromRequest(request);
 
-        if (!session || !session.user?.email) {
+        if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        const user = await prisma.user.findUnique({
-            where: { email: session.user.email },
-        });
-
-        if (!user) {
-            return NextResponse.json({ error: 'User not found' }, { status: 404 });
         }
 
         const body = await request.json();
@@ -86,7 +89,7 @@ export async function POST(request: NextRequest) {
 
         const template = await prisma.emailTemplate.create({
             data: {
-                userId: user.id,
+                userId,
                 name,
                 subject,
                 body: emailBody,
