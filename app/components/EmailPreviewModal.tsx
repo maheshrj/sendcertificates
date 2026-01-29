@@ -148,9 +148,10 @@ export function EmailPreviewModal({
 
                                 <div className="space-y-1">
                                     <label className="text-xs font-semibold text-gray-500 uppercase">Body</label>
-                                    <div className="p-4 bg-white rounded border border-gray-200 text-sm whitespace-pre-wrap min-h-[200px] shadow-sm">
-                                        {bodyPreview}
-                                    </div>
+                                    <div
+                                        className="p-4 bg-white rounded border border-gray-200 text-sm min-h-[200px] shadow-sm prose prose-sm max-w-none"
+                                        dangerouslySetInnerHTML={{ __html: bodyPreview }}
+                                    />
                                 </div>
 
                                 <div className="bg-blue-50 p-3 rounded text-xs text-blue-700">

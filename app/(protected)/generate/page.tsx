@@ -494,12 +494,6 @@ export default function GeneratePage() {
               ))}
             </select>
           </div>
-          {selectedEmailTemplate && (
-            <div className="mt-3 p-3 bg-gray-50 rounded border border-gray-200 text-sm">
-              <p className="font-medium text-gray-900 mb-1">Subject: {selectedEmailTemplate.subject}</p>
-              <p className="text-gray-600 line-clamp-3">{selectedEmailTemplate.body}</p>
-            </div>
-          )}
           {!selectedEmailTemplateId && (
             <p className="text-xs text-red-600 mt-1">Please select an email template before generating certificates</p>
           )}
