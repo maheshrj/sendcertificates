@@ -49,7 +49,7 @@ function TemplateSelector({ onSelect }: { onSelect: (template: Template | null) 
   return (
     <div className="mb-4">
       <label className="block text-sm font-medium text-gray-700 mb-2">
-        Select Template
+        Certificate Template
       </label>
       <select
         value={selectedId}
