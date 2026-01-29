@@ -81,8 +81,9 @@ export function EmailPreviewModal({
     const substituteVariables = (text: string) => {
         let result = text;
         Object.entries(sampleData).forEach(([key, value]) => {
-            // Replace {{Key}} and {{key}} case-insensitively potentially, but usually accurate case is best
+            // Replace both {{Key}} and ~Key~ formats
             result = result.replace(new RegExp(`{{${key}}}`, 'g'), value);
+            result = result.replace(new RegExp(`~${key}~`, 'g'), value);
         });
         return result;
     };
